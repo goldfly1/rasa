@@ -1,0 +1,54 @@
+# --- Secrets ---
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# --- Go ---
+/bin/
+/vendor/
+*.exe
+*.dll
+*.so
+*.test
+*.out
+coverage.out
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- IDEs ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# --- Logs & runtime ---
+*.log
+logs/
+data/archive/
+data/replays/
+data/sandbox/
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Keep these ---
+!workflows/template-*.json
+!souls/*.json
+!config/*.json
+!benchmarks/*.json
