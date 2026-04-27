@@ -3,7 +3,7 @@
 # Usage: .\scripts\create_databases.ps1 -Password "8764"
 
 param(
-    [string]$Host = "localhost",
+    [string]$Server = "localhost",
     [string]$Port = "5432",
     [string]$User = "postgres",
     [string]$Password = "8764"
@@ -25,10 +25,10 @@ $Databases = @(
 
 # Create each database (idempotent)
 foreach ($db in $Databases) {
-    $exists = psql -h $Host -p $Port -U $User -tc "SELECT 1 FROM pg_database WHERE datname='$db';" | Out-String
+    $exists = psql -h $Server -p $Port -U $User -tc "SELECT 1 FROM pg_database WHERE datname='$db';" | Out-String
     if ($exists.Trim() -ne "1") {
         Write-Host "Creating database: $db"
-        psql -h $Host -p $Port -U $User -tc "CREATE DATABASE $db;"
+        psql -h $Server -p $Port -U $User -tc "CREATE DATABASE $db;"
     } else {
         Write-Host "Database exists: $db"
     }

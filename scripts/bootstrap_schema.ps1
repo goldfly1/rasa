@@ -5,7 +5,7 @@
 # Usage: .\scripts\bootstrap_schema.ps1 -Password "8764"
 
 param(
-    [string]$Host = "localhost",
+    [string]$Server = "localhost",
     [string]$Port = "5432",
     [string]$User = "postgres",
     [string]$Password = "8764"
@@ -27,7 +27,7 @@ $Migrations = @(
 foreach ($file in $Migrations) {
     if (Test-Path $file) {
         Write-Host "Applying $file ..."
-        psql -h $Host -p $Port -U $User -f $file
+        psql -h $Server -p $Port -U $User -f $file
     } else {
         Write-Warning "Missing: $file"
     }
