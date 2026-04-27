@@ -1,0 +1,23 @@
+# Pool Controller Configuration
+pool:
+  name: "rasa-pool"
+  max_agents: 8
+  min_agents: 2
+  heartbeat_interval_seconds: 5
+  heartbeat_timeout_factor: 3
+  backpressure_threshold: 0.9
+  warmup_idle_seconds: 30
+
+souls:
+  - id: "coder-v2-dev"
+    replicas: 2
+  - id: "reviewer-v1"
+    replicas: 1
+  - id: "planner-v1"
+    replicas: 1
+  - id: "architect-v1"
+    replicas: 1
+
+labels:
+  env: pilot
+  host: omen-16

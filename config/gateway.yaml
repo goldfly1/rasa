@@ -1,0 +1,46 @@
+# LLM Gateway Configuration
+gateway:
+  name: "rasa-llm-gateway"
+  listen: "127.0.0.1:8080"
+  
+providers:
+  ollama:
+    base_url: "http://127.0.0.1:11434/v1"
+    default_model: "gemma4:31b-cloud"
+    api_key: "${OLLAMA_API_KEY}"
+    timeout: 120
+    weight: 100
+
+  # Uncomment to enable tier routing
+  # openrouter:
+  #   base_url: "https://openrouter.ai/api/v1"
+  #   api_key: "${OPENROUTER_API_KEY}"
+  #   default_model: "anthropic/claude-sonnet-4"
+  #   timeout: 120
+  #   weight: 0
+
+tiers:
+  standard:
+    provider: ollama
+    model: "gemma4:31b-cloud"
+  premium:
+    provider: ollama
+    model: "kimi-k2.6:cloud"
+
+cache:
+  backend: redis
+  redis_url: "redis://localhost:6379/0"
+  ttl: 3600
+  max_size: 10000
+  hash_algorithm: sha256
+
+fallback:
+  enabled: true
+  chain:
+    - ollama
+  max_attempts: 3
+  backoff_ms: 1000
+
+deterministic:
+  seed_passthrough: true
+  temperature_floor: 0.0
