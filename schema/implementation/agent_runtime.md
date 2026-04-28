@@ -49,7 +49,7 @@ On transition from `IDLE` to `WARMING`:
 - **Interval:** Configurable via soul sheet `behavior.session.heartbeat_interval_seconds` (default: 5s).
 - **Payload:** `agent_id`, `soul_id`, `current_state`, `task_id` (if active), `memory_usage_bytes`.
 - **Timeout:** Pool Controller declares agent dead after `3 × heartbeat_interval` without ACK.
-- **Transport:** NATS JetStream topic `agents.heartbeat.{agent_id}` — sent directly from the Python process via `nats-py`.
+- **Transport:** Redis Pub/Sub channel `agents.heartbeat.{agent_id}` — sent directly from the Python process via `redis-py`.
 
 ### 2.4 Session Checkpointing (Full Dump)
 
@@ -67,14 +67,14 @@ On `PAUSED` or `CHECKPOINTED` transitions, the runtime writes a **full state dum
 
 | Concern | Selection | Rationale |
 |---------|-----------|-----------|
-| **Language** | **Python 3.12+** | LLM SDK ecosystem; agent logic iteration speed. No Go sidecar for pilot — asyncio + nats-py handles NATS/heartbeat at single-machine scale. |
+| **Language** | **Python 3.12+** | LLM SDK ecosystem; agent logic iteration speed. No Go sidecar for pilot — asyncio + redis-py handles heartbeat publishing at single-machine scale. |
 | **Soul loading** | **YAML 1.2** + **JSON Schema** (draft 2020-12) | Declarative, human-readable, validated at load time via `go-playground/validator` or Python `jsonschema`. |
 | **Template engine** | **Handlebars** (Python: `chevron` or `pyhandlebars`) | Deterministic, portable, aligns with `agent_configuration.md`. |
 | **Session state** | **Redis** (hot) + **PostgreSQL** (durable checkpoint) + **flat files** (archive) | Redis for sub-ms working memory; PostgreSQL for checkpoint records; flat files for full conversation logs. |
-| **NATS client** | **nats-py** (Python) | Official NATS Python client, async-native (asyncio), supports JetStream publishing for heartbeats and checkpoint events. |
+| **Redis client** | **redis-py** (Python) | Official Redis Python client, async-native (asyncio), used for Pub/Sub heartbeats and checkpoint event publishing. |
 | **LLM Gateway client** | **openai** Python SDK | OpenAI-compatible endpoint at `http://localhost:11434/v1`. Same client works for Ollama and any OpenAI-compatible provider. |
 
-> **Sidecar note:** The Go sidecar (gRPC server, NATS consumer offload) is dropped for the pilot. It can be reintroduced if profiling reveals Python GIL contention on NATS I/O or CPU-bound tool execution.
+> **Sidecar note:** The Go sidecar (gRPC server, Redis subscriber offload) is dropped for the pilot. It can be reintroduced if profiling reveals Python GIL contention on Redis I/O or CPU-bound tool execution.
 
 ---
 
@@ -86,8 +86,8 @@ On `PAUSED` or `CHECKPOINTED` transitions, the runtime writes a **full state dum
   agent-reviewer: python -m rasa.agent --soul souls/reviewer-v1.yaml --mode daemon
   ```
 - **Soul sheet path:** `<project_root>/souls/{soul_id}.yaml` — loaded from the local filesystem at session start.
-- **Dependencies:** Local Redis, local PostgreSQL, local NATS, local LLM Gateway, local Ollama Cloud desktop app.
-- **Startup order:** Redis → PostgreSQL → NATS → LLM Gateway → Pool Controller → Agent Runtime.
+- **Dependencies:** Local Redis, local PostgreSQL,  local LLM Gateway, local Ollama Cloud desktop app.
+- **Startup order:** Redis → PostgreSQL → → LLM Gateway → Pool Controller → Agent Runtime.
 - **Multiple agents:** Run multiple Procfile entries for different roles (coder, reviewer, planner). Each is a separate Python process with its own soul sheet.
 
 ---
@@ -111,7 +111,7 @@ On `PAUSED` or `CHECKPOINTED` transitions, the runtime writes a **full state dum
 |---|----------|--------|
 | 1 | Full memory dump vs. incremental delta for checkpointing? | **Resolved:** Full dump for pilot simplicity. Incremental deltas as future optimization. |
 | 2 | What is the heartbeat interval and timeout behavior under high GC pressure in Python? | **Open:** Needs load testing. Use `uvloop` as a zero-cost event loop optimization. |
-| 3 | Should the Go sidecar be mandatory or opt-in per soul sheet? | **Resolved:** Dropped for pilot. Reintroduce if profiling shows GIL contention on NATS I/O. |
+| 3 | Should the Go sidecar be mandatory or opt-in per soul sheet? | **Resolved:** Dropped for pilot. Reintroduce if profiling shows GIL contention on Redis I/O. |
 | 4 | How do we handle soul sheet hot-reload without dropping active sessions? | **Resolved:** Filesystem watcher. Agent drains current task, re-reads soul sheet, resumes in IDLE. Active task is not interrupted — new soul takes effect on next task assignment. |
 
 ---
@@ -122,6 +122,7 @@ On `PAUSED` or `CHECKPOINTED` transitions, the runtime writes a **full state dum
 |------|--------|--------|
 | 2026-04-25 | Pilot provisioning: dropped Go sidecar, replaced S3 archive with flat files, replaced K8s Pod with native Python process, added full-dump checkpointing, added startup order and Procfile entries. | Codex |
 | 2026-04-25 | Added soul sheet loading, CLI binding, and heartbeat details | ? |
+| 2026-04-28 | Removed JetStream reference from Redis client rationale; all messaging via PG LISTEN/NOTIFY + Redis Pub/Sub. | Goldf |
 
 ---
 

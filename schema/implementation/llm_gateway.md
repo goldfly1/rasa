@@ -26,7 +26,7 @@ The gateway maintains a **prompt hash cache** (Redis) keyed by `SHA-256(final_as
   - TTL expiry
   - Soul sheet filesystem change (filesystem watcher detects `soul_id` version bump)
   - Manual flush via Gateway admin endpoint
-  - (NATS `souls.update` is the documented upgrade path)
+  - (`souls.update` is the documented upgrade path)
 
 ### 2.2 Model Parameter Routing
 
@@ -89,10 +89,10 @@ For replay and regression testing, the Gateway supports a `seed` parameter in th
   ```
   llm-gateway: python -m rasa.llm_gateway --config config/gateway.yaml
   ```
-- **Dependencies:** Local Redis, local NATS, Ollama Cloud desktop app (must be running).
+- **Dependencies:** Local Redis, , Ollama Cloud desktop app (must be running).
 - **Configuration file:** `config/gateway.yaml` — contains tier-to-model mapping, fallback chain, and cache TTLs.
 - **Auth:** Ollama desktop app handles its own auth. The Gateway does not store an Ollama API key. The optional OpenAI fallback key lives in `.env`.
-- **Startup order:** Redis → NATS → Ollama desktop app → LLM Gateway → Agent Runtime.
+- **Startup order:** Redis → → Ollama desktop app → LLM Gateway → Agent Runtime.
 
 ---
 
@@ -129,3 +129,4 @@ For replay and regression testing, the Gateway supports a `seed` parameter in th
 ---
 
 *This document implements the inference interface contract defined in `architectural_schema_v2.1.md` §9. Tier mapping aligns with `agent_configuration.md` §2.2 model block.*
+

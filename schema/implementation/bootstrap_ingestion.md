@@ -57,10 +57,10 @@ During bootstrap, the system:
 2. Validates each against JSON Schema (see [`agent_configuration.md`](agent_configuration.md) §2.3).
 3. Resolves inheritance chains and detects cycles (e.g., A inherits B, B inherits A).
 4. Stores resolved soul sheets in PostgreSQL `soul_sheets` table with `soul_id` as primary key.
-5. **Publishes `souls.loaded` event to NATS** — Pool Controller subscribes to begin pre-warming agents with the available souls.
+5. **Publishes `souls.loaded` via PostgreSQL LISTEN/NOTIFY** — Pool Controller subscribes to begin pre-warming agents with the available souls.
 6. Computes baseline `prompt_version_hash` for each soul and stores in `soul_baselines` table.
 
-> **Fallback:** If NATS is not yet available during bootstrap, the Pool Controller can also scan `<project_root>/souls/` directly on startup. The NATS `souls.loaded` event is the primary path for coordinated startup.
+> **Fallback:** As a fallback, the Pool Controller can also scan `<project_root>/souls/` directly on startup. The `souls.loaded` notification is the primary path for coordinated startup.
 
 ### 2.3 Baseline Freezing
 
@@ -78,7 +78,7 @@ Once bootstrapped, the system enters a **baseline frozen** state:
 | Concern | Selection | Rationale |
 |---------|-----------|-----------|
 | **Ingestion driver** | **Python 3.12+** | tree-sitter for AST extraction, OpenAI SDK for embeddings, YAML parsing — all Python-native. |
-| **Coordination controller** | **Go 1.24+** | Manages the pipeline sequence, publishes NATS events, writes to PostgreSQL. |
+| **Coordination controller** | **Go 1.24+** | Manages the pipeline sequence, publishes LISTEN/NOTIFY notifications, writes to PostgreSQL. |
 | **AST parsing** | **tree-sitter** (Python bindings) | Multi-language grammar support. Single tool for Go, Python, TypeScript, Rust, etc. |
 | **Embedding model** | **OpenAI `text-embedding-3-small`** | 1536-dim vectors, known quality. API key in `.env`. |
 | **Chunking strategy** | 512 tokens, 64-token overlap, file-boundary-aware | Balances retrieval granularity with embedding API call volume. |
@@ -92,9 +92,9 @@ Once bootstrapped, the system enters a **baseline frozen** state:
   ```
   python -m rasa.bootstrap --repo /path/to/target-repo --db postgres://localhost/rasa_memory
   ```
-- **Dependencies:** Local PostgreSQL, local NATS (for `souls.loaded` event), `.env` with `OPENAI_API_KEY`.
+- **Dependencies:** Local PostgreSQL, PostgreSQL LISTEN/NOTIFY, `.env` with `OPENAI_API_KEY`.
 - **Lifecycle:** Run once after the repo is cloned. Re-run when the target repo has significant structural changes (new module, dependency refactor).
-- **Output:** Populated `canonical_model`, `soul_sheets`, `soul_baselines`, and pgvector index in PostgreSQL. NATS event emitted on completion.
+- **Output:** Populated `canonical_model`, `soul_sheets`, `soul_baselines`, and pgvector index in PostgreSQL. Notification emitted on completion.
 
 ---
 
@@ -131,3 +131,4 @@ Once bootstrapped, the system enters a **baseline frozen** state:
 ---
 
 *This document implements the bootstrap contract defined in `architectural_schema_v2.1.md` §8. Storage and embedding decisions align with `memory_subsystem.md` §3 and `top_level_decisions.md` §2.2.*
+

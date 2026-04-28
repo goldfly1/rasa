@@ -22,10 +22,10 @@ providers:
 tiers:
   standard:
     provider: ollama
-    model: "gemma4:31b-cloud"
+    model: "${RASA_DEFAULT_MODEL:-Deepseek-v4-flash:cloud}"
   premium:
     provider: ollama
-    model: "kimi-k2.6:cloud"
+    model: "${RASA_PREMIUM_MODEL:-Deepseek-v4-pro:cloud}"
 
 cache:
   backend: redis

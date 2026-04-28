@@ -30,7 +30,7 @@ CREATE TABLE embeddings (
     model       TEXT NOT NULL,
     chunk_index INTEGER NOT NULL DEFAULT 0,
     chunk_text  TEXT NOT NULL,
-    embedding   vector(768) NOT NULL,
+    embedding   vector(1536) NOT NULL,
     created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );
 

@@ -55,7 +55,7 @@ The canonical model (JSONB table `canonical_model`) is updated by three paths:
 
 | Concern | Selection | Rationale |
 |---------|-----------|-----------|
-| **Controller language** | **Go 1.24+** | NATS consumer, Redis client, PostgreSQL driver — single compiled binary for the memory control loop. |
+| **Controller language** | **Go 1.24+** | PostgreSQL LISTEN/NOTIFY subscriber, Redis client, PostgreSQL driver — single compiled binary for the memory control loop. |
 | **Embedder language** | **Python 3.12+** | Ecosystem access to embedding models (sentence-transformers, OpenAI SDK). |
 | **Vector index** | **PostgreSQL 16 + pgvector** | Already installed. Co-located with primary durable store. HNSW index for approximate nearest-neighbor search. |
 | **Embedding model** | **OpenAI `text-embedding-3-small`** (API) | 1536-dim vectors, known quality, negligible cost at pilot scale. Local model fallback (Ollama / sentence-transformers) is a documented learning track. |
@@ -72,7 +72,7 @@ The canonical model (JSONB table `canonical_model`) is updated by three paths:
   ```
   redis: redis-server --port 6379
   ```
-- **Memory Controller** (Go) — Native binary. Subscribes to NATS topics, manages eviction and background reconciler schedules.
+- **Memory Controller** (Go) — Native binary. Subscribes to PostgreSQL LISTEN/NOTIFY channels, manages eviction and background reconciler schedules.
 - **Embedder** (Python) — Called by the Memory Controller via subprocess or local HTTP. Batches embedding requests to minimize API calls.
 
 **Data layout:**
@@ -80,7 +80,7 @@ The canonical model (JSONB table `canonical_model`) is updated by three paths:
 <project_root>/
   data/
     archive/         # Session snapshots, replay bundles
-    nats/            # JetStream file store (managed by NATS)
+    
 ```
 
 ---
@@ -119,3 +119,4 @@ The canonical model (JSONB table `canonical_model`) is updated by three paths:
 ---
 
 *This document implements the memory contract defined in `architectural_schema_v2.1.md` §5. Storage layout aligns with `top_level_decisions.md` §2.2.*
+

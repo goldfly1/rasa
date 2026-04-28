@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Windows-side workers are Python scripts inside `C:\Users\goldf\rasa\.venv` that:
+The Python workers inside `C:\Users\goldf\rasa\.venv` are agent processes that:
 1. Read YAML soul sheets defining agent personality
 2. Resolve tier/model from `config/gateway.yaml`
 3. Render system prompts via Jinja2 (Handlebars→Jinja2 preprocessor)
@@ -13,7 +13,7 @@ The Windows-side workers are Python scripts inside `C:\Users\goldf\rasa\.venv` t
 ## Entry Points
 
 ### `rasa/agent/dispatcher.py`
-Main worker script. Called from WSL via PowerShell or run directly on Windows.
+Main worker script. Run directly on Windows.
 
 ```bash
 # One-shot: run once, update task to COMPLETED
@@ -24,7 +24,7 @@ python -m rasa.agent.dispatcher --soul coder-v2-dev --task-id <uuid> --daemon
 ```
 
 ### `rasa/pool/controller.py`
-WSL-side poller. Not a worker, but the orchestrator's spawn logic.
+Task poller and worker spawner.
 
 ```python
 class PoolController:
@@ -32,7 +32,7 @@ class PoolController:
         while True:
             rows = self._poll_pending()
             for task_id, soul_id in rows:
-                self._spawn_windows_worker(task_id, soul_id)
+                self._spawn_worker(task_id, soul_id)
             time.sleep(2)
 ```
 
@@ -96,7 +96,7 @@ with psycopg.connect(...) as conn:
 
 ## LLM Gateway Client
 
-`rasa/llm_gateway/client.py` is the async client used by both workers and the orchestrator:
+`rasa/llm_gateway/client.py` is the async client:
 
 ```python
 from rasa.llm_gateway import GatewayClient
@@ -121,10 +121,9 @@ Features:
 ```python
 from rasa.db import get_pool
 pool = get_pool("rasa_orch")
-# Use for multiple requests, close with close_pool()
 ```
 
-Workers use ad-hoc connections instead of the pool for one-shot tasks.
+Workers use ad-hoc connections for one-shot tasks.
 
 ## Daemon Mode
 

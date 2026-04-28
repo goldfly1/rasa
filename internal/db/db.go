@@ -3,9 +3,6 @@ package db
 import (
 	"fmt"
 	"os"
-	"time"
-
-	"github.com/lib/pq"
 )
 
 // DSN builds a connection string from environment or fallback values.
@@ -22,9 +19,4 @@ func env(key, fallback string) string {
 		return v
 	}
 	return fallback
-}
-
-// RegisterTypes registers custom types for pq driver.
-func RegisterTypes() {
-	_ = pq.Eawb // force import
 }

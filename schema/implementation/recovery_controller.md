@@ -77,11 +77,11 @@ If checkpoint `soul_version` ≠ available soul sheet version:
 
 | Concern | Selection | Rationale |
 |---------|-----------|-----------|
-| **Language** | **Go 1.24+** | NATS heartbeat monitoring, PostgreSQL ledger queries, checkpoint replay — single compiled binary. |
+| **Language** | **Go 1.24+** | Redis Pub/Sub heartbeat monitoring, PostgreSQL ledger queries, checkpoint replay — single compiled binary. |
 | **Checkpoint store** | **PostgreSQL** (`checkpoints` table) | JSONB for flexible state; indexed by `agent_id` and `task_id`. |
 | **Archive store** | **Flat files on disk** (`<data_root>/archive/`) | Full conversation logs and memory context. Pointers stored in checkpoint JSON. |
 | **Idempotency Ledger** | **PostgreSQL** (`idempotency_ledger` table) | Durable, ACID-guaranteed. Unique constraint prevents duplicate execution. |
-| **Heartbeat monitoring** | **NATS JetStream** (`agents.heartbeat.*` wildcard subscription) | Recovery Controller consumes all heartbeat topics; detects miss by absence. |
+| **Heartbeat monitoring** | **Redis Pub/Sub** (`agents.heartbeat.*` pattern subscription) | Recovery Controller consumes all heartbeat topics; detects miss by absence. |
 
 ---
 
@@ -89,12 +89,12 @@ If checkpoint `soul_version` ≠ available soul sheet version:
 
 - **Process:** Native Go binary, started via Procfile:
   ```
-  recovery: recovery-controller --db postgres://localhost/rasa_recovery --nats localhost:4222
+  recovery: recovery-controller --db postgres://localhost/rasa_recovery 
   ```
-- **Dependencies:** Local PostgreSQL, local NATS.
+- **Dependencies:** Local PostgreSQL, local Redis.
 - **Startup:** Runs alongside the Orchestrator and Pool Controller. Consumes heartbeat topics from all agents.
 - **Data access:** Reads checkpoint state from PostgreSQL; reads archive blobs from local flat files.
-- **Agent recovery:** On successful recovery, the Recovery Controller publishes a `session.restored` event to NATS. The Orchestrator listens for this to update task state.
+- **Agent recovery:** On successful recovery, the Recovery Controller publishes a `session.restored` notification via PostgreSQL LISTEN/NOTIFY. The Orchestrator listens for this to update task state.
 
 ---
 
@@ -130,3 +130,4 @@ If checkpoint `soul_version` ≠ available soul sheet version:
 ---
 
 *This document implements the recovery contract defined in `architectural_schema_v2.1.md` §11. Checkpoint format aligns with `agent_runtime.md` §2.4. Idempotency ledger aligns with `orchestrator.md` task lifecycle.*
+

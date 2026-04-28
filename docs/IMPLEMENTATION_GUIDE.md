@@ -1,74 +1,63 @@
 # RASA Implementation Guide
 
-## 1. Orchestrator in WSL (Hermes)
+## 1. Orchestrator (Claude Code)
 
 ### 1.1 What the Orchestrator Does
-Hermes (this agent) lives in WSL. It reads the project state, decides what needs to happen next, and **dispatches** — never executes directly. The orchestrator:
+Claude Code (this instance) serves as the orchestrator. It reads the project state, decides what needs to happen next, and **dispatches** — never executes directly. The orchestrator:
 - Maintains long-term project memory via `.hermes/AGENTS.md` and `.hermes/SOUL.md`
 - Reads/writes PostgreSQL in the `rasa_orch` database
-- Spawns Windows-side workers via `powershell.exe` passthrough
+- Spawns Windows-side workers via `subprocess.Popen(start_new_session=True)`
 - Commits code changes after each work block
 
-### 1.2 Why WSL?
-- Your Windows filesystem is at `/mnt/c/`
-- Direct `psql` from WSL to Windows PostgreSQL **fails** (connection refused)
-- You must bridge through `powershell.exe -Command` for Windows-side execution
-- The orchestrator handles the quote-escaping and cross-OS coordination
-
-### 1.3 Persistent Context
+### 1.2 Persistent Context
 | File | Size | Contents |
 |------|------|----------|
 | `.hermes/SOUL.md` | ~1.2 kB | Orchestrator role, constraints, current phase, invocation style |
 | `.hermes/AGENTS.md` | ~6.3 kB | Full mission, architecture, decisions, pitfalls, commands |
 | `AGENTS.md` (repo root) | ~2.8 kB | Same content, used if `.hermes/` missing |
+| `CLAUDE.md` (repo root) | ~2.5 kB | Tooling guidance for Claude Code |
 
-These files survive across sessions. Hermes will discover them and load them automatically.
+These files survive across sessions. Claude Code discovers and loads them automatically.
 
-### 1.4 Memory Caps
+### 1.3 Memory Caps
 - Personal memory: ~2200 chars
 - User profile: ~1375 chars
 - **These are not enough** for full project state. Use `AGENTS.md` + filesystem instead.
 - Subdirectory scans of large repos silently eat tokens — avoid unfiltered `find` or `ls -R`.
 
-### 1.5 WSL→Windows Execution Patterns
+### 1.4 Execution Patterns
 
-**Pattern A: One-shot Python script**
+**Pattern A: One-shot Python agent**
 ```bash
-powershell.exe -Command "& 'C:\Users\goldf\rasa\.venv\Scripts\python.exe' -m rasa.agent.dispatcher --soul coder-v2-dev --goal 'Refactor DB layer' --one-shot"
-```
-Note: `--one-shot` is the default; only pass `--daemon` for long-lived agents.
-
-**Pattern B: PowerShell script file** (avoids quote escaping)
-```powershell
-# tests/smoke_dispatcher.ps1
-$env:RASA_DB_PASSWORD = '8764'
-& "C:\Users\goldf\rasa\.venv\Scripts\python.exe" -m rasa.agent.dispatcher --soul coder-v2-dev --goal "Refactor DB layer" --dry-run --one-shot
-```
-Run from WSL:
-```bash
-powershell.exe -File tests/smoke_dispatcher.ps1
+python -m rasa.agent.dispatcher --soul coder-v2-dev --goal "Refactor DB layer" --one-shot
 ```
 
-**Pattern C: Pool controller loop (WSL-side Python)**
+**Pattern B: Pool controller loop**
 ```bash
 python -m rasa.pool.controller --pool-file config/pool.yaml
 ```
-This polls `rasa_orch.tasks` every 2 seconds and spawns Pattern A or B as needed.
+This polls `rasa_orch.tasks` via PostgreSQL LISTEN/NOTIFY and spawns Pattern A as needed.
+
+**Pattern C: Direct PostgreSQL task creation**
+```sql
+INSERT INTO rasa_orch.tasks (title, description, payload, status, soul_id)
+VALUES ('Refactor DB layer', '...', '{"type": "refactor"}', 'PENDING', 'coder-v2-dev');
+```
 
 ---
 
-## 2. Windows-Side Workers (Python)
+## 2. Workers (Python Agents)
 
 ### 2.1 Worker Architecture
 Every worker is an instance of `rasa.agent.dispatcher`. It:
 1. Reads its **soul sheet** (`souls/*.yaml`)
 2. Renders the **system prompt** via Jinja2 (Handlebars `{{#each}}` translated to Jinja2 `{% for %}`)
-3. Calls the **LLM** through `rasa.llm_gateway.client.GatewayClient`
+3. Calls the **LLM** via Ollama's OpenAI-compatible API (localhost:11434)
 4. Writes the **result** back to PostgreSQL (`rasa_orch.tasks`)
 5. Optionally writes a **checkpoint file** to `checkpoints/<task_id>.json`
 
 ### 2.2 Soul Sheets
-Soul sheets YAML files in `souls/` define:
+Soul sheets (YAML files in `souls/`) define:
 - `agent_role`: CODER, REVIEWER, PLANNER, ARCHITECT
 - `model`: tier (standard/premium), temperature, max_tokens
 - `prompt.system_template`: Jinja2-ish template with `{{agent_role}}`, `{{#each metadata.tags}}`
@@ -77,74 +66,30 @@ Soul sheets YAML files in `souls/` define:
 - `behavior.session.mode`: `one-shot` or `daemon`
 - `cli.argument_binding`: `--task-id` maps to `task.id`, etc.
 
-**Example: coder-v2-dev**
-```yaml
-soul_id: "coder-v2-dev"
-agent_role: CODER
-model:
-  default_tier: "standard"
-  temperature: 0.2
-  max_tokens: 8192
-prompt:
-  system_template: |
-    You are {{metadata.name}}, a {{agent_role}} agent in RASA.
-    Specialties: {{#each metadata.tags}}{{this}}, {{/each}}
-  context_injection: |
-    Current task: {{task.title}}
-    Codebase context: {{memory.short_term_summary}}
-behavior:
-  tool_policy:
-    allowed_tools: [file_read, file_write, shell_exec, git_diff]
-    denied_tools: [shell_exec:sudo, file_write:/etc/*]
-```
-
 ### 2.3 Jinja2 Rendering Pipeline
-The soul sheets use **Handlebars** (`{{#each}}`) because the original design targeted Go's `raymond` library. The Python dispatcher translates Handlebars to Jinja2 at runtime:
+Soul sheets use **Handlebars** (`{{#each}}`) because the original design targeted Go's `raymond` library. The Python dispatcher translates Handlebars to Jinja2 at runtime:
 
 ```python
-# rasa/agent/dispatcher.py
-
-def _render_system_prompt(soul, task, memory):
-    import jinja2
-
-    def hb_to_jinja(text):
-        """Translate Handlebars {{#each path}} to Jinja2 {% for item in path %}."""
-        text = re.sub(r'\{\{#each\s+([\w.]+)\s*\}\}', r'{% for item in \1 %}', text)
-        text = text.replace('{{this}}', '{{item}}')
-        text = re.sub(r'\{\{/each\s*\}\}', '{% endfor %}', text)
-        return text
-
-    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
-    ctx = {"metadata": soul["metadata"], "agent_role": soul["agent_role"], ...}
-    return env.from_string(hb_to_jinja(soul["prompt"]["system_template"])).render(ctx)
+def hb_to_jinja(text):
+    text = re.sub(r'\{\{#each\s+([\w.]+)\s*\}\}', r'{% for item in \1 %}', text)
+    text = text.replace('{{this}}', '{{item}}')
+    text = re.sub(r'\{\{/each\s*\}\}', '{% endfor %}', text)
+    return text
 ```
 
-### 2.4 LLM Gateway (`rasa/llm_gateway/client.py`)
-```python
-client = GatewayClient()
-result = await client.complete(
-    prompt="Refactor the DB layer",
-    tier="standard",          # resolves to gemma4:31b-cloud
-    # tier="premium",         # resolves to kimi-k2.6:cloud
-)
-# Returns: {"content": "...", "model": "gemma4:31b-cloud", "usage": {...}}
-```
+### 2.4 LLM Gateway
+Both tiers run through the local Ollama gateway at `http://127.0.0.1:11434/v1`:
+- **Standard tier** → `gemma4:31b-cloud`
+- **Premium tier** → `kimi-k2.6:cloud`
 
-The gateway reads `config/gateway.yaml`:
-```yaml
-tiers:
-  standard: {provider: ollama, model: gemma4:31b-cloud}
-  premium:  {provider: ollama, model: kimi-k2.6:cloud}
-```
-
-Both are served by your local Ollama gateway at `http://127.0.0.1:11434/v1`.
+Configuration in `config/gateway.yaml`. The `rasa/llm_gateway/client.py` module provides an async client with retry (3 attempts, exponential backoff) and best-effort response caching to `rasa_memory`.
 
 ### 2.5 Database Writes
 After the LLM call completes, the dispatcher updates `rasa_orch.tasks`:
 ```sql
-UPDATE tasks 
-SET status = 'COMPLETED', 
-    completed_at = NOW(), 
+UPDATE tasks
+SET status = 'COMPLETED',
+    completed_at = NOW(),
     result = '{"content": "...", "model": "..."}'::jsonb
 WHERE id = '<task_id>';
 ```
@@ -155,32 +100,32 @@ INSERT INTO checkpoint_refs (task_id, agent_id, snapshot_path, metadata)
 VALUES ('<task_id>', 'agent-coder-v2-dev', 'checkpoints/<task_id>.json', '{"turn": 1}');
 ```
 
-### 2.6 Environment Variables (Windows-side)
-These must be set in the PowerShell / Windows environment:
+### 2.6 Environment Variables
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `RASA_DB_PASSWORD` | *(required)* | PostgreSQL password |
 | `RASA_DB_HOST` | `localhost` | Database host |
 | `RASA_DB_PORT` | `5432` | Database port |
 | `RASA_DB_USER` | `postgres` | Database user |
-| `RASA_DEFAULT_MODEL` | `gemma4:31b-cloud` | Standard tier LLM |
-| `RASA_PREMIUM_MODEL` | `kimi-k2.6:cloud` | Premium tier LLM |
+| `RASA_DEFAULT_MODEL` | `Deepseek-v4-flash:cloud` | Standard tier LLM |
+| `RASA_PREMIUM_MODEL` | `Deepseek-v4-pro:cloud` | Premium tier LLM |
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434/v1` | Ollama gateway |
 | `OLLAMA_API_KEY` | `ollama` | API key |
 
 ---
 
-## 3. Pool Controller (WSL-side Python)
+## 3. Pool Controller
 
 ### 3.1 What It Does
-`rasa/pool/controller.py` runs in WSL, **not** Windows. It:
-1. Polls `rasa_orch.tasks` for `PENDING` tasks with no `assigned_agent_id`
-2. Reads `config/pool.yaml` for soul→replica mapping
-3. Spawns Windows-side workers via `subprocess.Popen(..., start_new_session=True)`
-4. Logs spawn events to `rasa_pool.backpressure_events`
+`rasa/pool/controller.py` polls for tasks and spawns workers:
+1. Listens to PostgreSQL `tasks_assigned` channel via LISTEN/NOTIFY
+2. On notification, fetches pending tasks from `rasa_orch.tasks`
+3. Reads `config/pool.yaml` for soul→replica mapping
+4. Spawns workers via `subprocess.Popen(start_new_session=True)`
+5. Tracks heartbeats via Redis Pub/Sub (`agents.heartbeat.*`)
 
 ### 3.2 Why Subprocess Instead of Threads?
-- Windows workers are **separate processes** with their own Python interpreter and soul state
+- Workers are **separate processes** with their own Python interpreter and soul state
 - Each worker has a distinct `task_id` and writes to the DB independently
 - `start_new_session=True` makes them survive the pool controller restarting
 
@@ -195,70 +140,84 @@ souls:
   - id: "reviewer-v1"
     replicas: 1
 ```
-The pool controller respects `max_agents` and tracks active workers in `rasa_pool.agents`.
 
 ---
 
-## 4. Data Flow (End-to-End)
+## 4. Inter-Component Communication
+
+All messaging uses infrastructure already in the stack — no separate message broker.
+
+| Message Type | Backend | Rationale |
+|-------------|---------|-----------|
+| **Durable events** (task assignment, checkpoints, sandbox results) | PostgreSQL LISTEN/NOTIFY + backing tables | Transaction-safe, zero extra deps |
+| **Ephemeral events** (heartbeats, policy updates) | Redis Pub/Sub | High-frequency, loss-tolerant |
+
+### Channel Topology (PostgreSQL)
+| Channel | Producer | Consumer | Backing Table |
+|---------|----------|----------|---------------|
+| `tasks_assigned` | Orchestrator | Pool Controller | `tasks` |
+| `tasks_submit` | CLI | Orchestrator | `tasks` |
+| `checkpoint_saved` | Agent Runtime | Recovery Controller | `checkpoints` |
+| `sandbox_result` | Sandbox Pipeline | Orchestrator | `sandbox_results` |
+| `eval_record` | Evaluation Engine | Orchestrator | `evaluation_records` |
+
+### Channel Topology (Redis Pub/Sub)
+| Channel | Producer | Consumer | Notes |
+|---------|----------|----------|-------|
+| `agents.heartbeat.{agent_id}` | Agent Runtime | Pool Controller | Glob: `agents.heartbeat.*` |
+| `policy.update` | Policy Engine admin | Policy Engine instances | PG poll (30s) catches misses |
+
+---
+
+## 5. Data Flow (End-to-End)
 
 ```
-1. Hermes (WSL) decides a task is needed
+1. Orchestrator decides a task is needed
    └── INSERT INTO rasa_orch.tasks (title, status='PENDING', soul_id='coder-v2-dev')
 
-2. Pool Controller (WSL) polls tasks every 2s
-   └── SELECT WHERE status='PENDING' AND assigned_agent_id IS NULL
+2. Pool Controller receives notification
+   └── LISTEN tasks_assigned → NOTIFY triggers SELECT on pending tasks
 
-3. Worker spawned via powershell.exe (Windows)
-   └── C:\Users\goldf\rasa\.venv\Scripts\python.exe -m rasa.agent.dispatcher --soul coder-v2-dev --task-id <uuid> --one-shot
+3. Worker spawned via subprocess
+   └── python -m rasa.agent.dispatcher --soul coder-v2-dev --task-id <uuid> --one-shot
 
-4. Dispatcher (Windows) executes
+4. Dispatcher executes
    a. Reads souls/coder-v2-dev.yaml
-   b. Renders prompt with Jinja2 (Handlebars -> Jinja2)
-   c. Calls LLM Gateway -> Ollama (gemma4:31b-cloud)
+   b. Renders prompt with Jinja2 (Handlebars → Jinja2)
+   c. Calls Ollama (gemma4:31b-cloud) via localhost HTTP
    d. UPDATE tasks SET status='COMPLETED', result='{...}' WHERE id=<uuid>
 
-5. Pool Controller sees update
-   └── No further action needed (task complete)
-
-6. Hermes checks DB for done tasks
+5. Orchestrator checks DB for done tasks
    └── SELECT id, status, result FROM tasks WHERE status='COMPLETED'
    └── Reviews result, decides next task or marks done
 ```
 
-### 4.1 Failure Paths
+### 5.1 Failure Paths
 | Scenario | Handling |
 |----------|----------|
-| Worker crashes before DB write | Pool controller heartbeat timeout (`> 15s`); task stays `ASSIGNED`, retry scheduled |
-| LLM timeout | Gateway retries 3× with exponential backoff; final status `FAILED` |
-| Policy rule violation | Policy engine writes `audit_log` + `human_reviews` row; blocks commit |
-| PostgreSQL unreachable | Dispatcher exits with error code 255; Pool controller logs `backpressure_events` |
+| Worker crashes before DB write | Heartbeat timeout (> 15s); task stays ASSIGNED, retry scheduled |
+| LLM timeout | Retries 3× with exponential backoff; final status FAILED |
+| Policy rule violation | Policy engine writes audit_log + human_reviews row; blocks commit |
+| PostgreSQL unreachable | Dispatcher exits with error code 255; Pool Controller logs backpressure |
+| Redis unavailable | Heartbeat silence triggers agent timeout; PG policy poll catches up |
 
 ---
 
-## 5. Files You Should Know
+## 6. Key Files
 
-| File | Side | Purpose |
-|------|------|---------|
-| `.hermes/SOUL.md` | WSL | Hermes orchestrator context (you) |
-| `.hermes/AGENTS.md` | WSL | Full system state + decisions |
-| `rasa/agent/dispatcher.py` | Windows | Worker: soul -> prompt -> LLM -> DB |
-| `rasa/pool/controller.py` | WSL | Polls tasks, spawns Windows workers |
-| `rasa/llm_gateway/client.py` | Windows | Async Ollama client with tier routing |
-| `rasa/db/conn.py` | Both | psycopg connection pool |
-| `souls/*.yaml` | Both | Agent personality + model config |
-| `config/gateway.yaml` | Both | LLM provider + tier mapping |
-| `config/pool.yaml` | WSL | Agent sizing + replica counts |
-| `migrations/010_*.sql` | DB | `rasa_orch` schema (tasks, deps, checkpoints) |
-| `migrations/020_*.sql` | DB | `rasa_pool` schema (agents, heartbeats, backpressure) |
-| `migrations/030_*.sql` | DB | `rasa_policy` schema (rules, audit, human reviews) |
-| `migrations/040_*.sql` | DB | `rasa_memory` schema (canonical nodes, embeddings, soul sheets) |
-
----
-
-## 6. Next Steps
-
-1. **Policy Engine** (`rasa/policy/engine.py`) — evaluate `policy_rules` at task creation time, write `audit_log`
-2. **Memory Subsystem** (`rasa/memory/`) — embed canonical nodes into `rasa_memory.embeddings`, vector search
-3. **Sandbox Pipeline** (`rasa/sandbox/`) — semgrep + pytest after coder output
-4. **Recovery Controller** (`cmd/recovery-controller/main.go`) — retry failed tasks, replay checkpoints
-5. **Evaluation Engine** (`cmd/eval-aggregator/main.go`) — benchmark runs, score tasks
+| File | Purpose |
+|------|---------|
+| `.hermes/SOUL.md` | Orchestrator context (Claude Code) |
+| `.hermes/AGENTS.md` | Full system state + decisions |
+| `CLAUDE.md` | Claude Code tooling guidance |
+| `rasa/agent/dispatcher.py` | Worker: soul → prompt → LLM → DB |
+| `rasa/pool/controller.py` | Polls tasks via PG LISTEN/NOTIFY, spawns workers |
+| `rasa/llm_gateway/client.py` | Async Ollama client with tier routing |
+| `rasa/db/conn.py` | psycopg connection pool |
+| `souls/*.yaml` | Agent personality + model config |
+| `config/gateway.yaml` | LLM provider + tier mapping |
+| `config/pool.yaml` | Agent sizing + replica counts |
+| `migrations/010_*.sql` | `rasa_orch` schema (tasks, deps, checkpoints) |
+| `migrations/020_*.sql` | `rasa_pool` schema (agents, heartbeats, backpressure) |
+| `migrations/030_*.sql` | `rasa_policy` schema (rules, audit, human reviews) |
+| `migrations/040_*.sql` | `rasa_memory` schema (canonical nodes, embeddings, soul sheets) |

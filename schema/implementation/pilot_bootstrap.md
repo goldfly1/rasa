@@ -22,7 +22,6 @@ rasa/
 │   ├── planner-v1.yaml
 │   └── architect-v1.yaml
 ├── config/                         # Runtime configuration
-│   ├── nats-server.conf
 │   ├── gateway.yaml
 │   └── pool.yaml
 ├── scanners/                       # Sandbox scanner rule overlays
@@ -457,19 +456,18 @@ extensions: {}
 
 # === Infrastructure ===
 redis: redis-server --port 6379
-nats: nats-server -c config/nats-server.conf
 
 # === Control Plane (Go) ===
-orchestrator: orchestrator --db postgres://localhost/rasa_orch --nats localhost:4222
-pool-controller: pool-controller --config config/pool.yaml --db postgres://localhost/rasa_pool --nats localhost:4222
-policy-engine: policy-engine --db postgres://localhost/rasa_policy --nats localhost:4222
-recovery: recovery-controller --db postgres://localhost/rasa_recovery --nats localhost:4222
-eval-aggregator: evaluation-engine --mode aggregator --db postgres://localhost/rasa_eval --nats localhost:4222
-memory: memory-controller --db postgres://localhost/rasa_memory --nats localhost:4222
+orchestrator: orchestrator --db postgres://localhost/rasa_orch
+pool-controller: pool-controller --config config/pool.yaml --db postgres://localhost/rasa_pool
+policy-engine: policy-engine --db postgres://localhost/rasa_policy
+recovery: recovery-controller --db postgres://localhost/rasa_recovery
+eval-aggregator: evaluation-engine --mode aggregator --db postgres://localhost/rasa_eval
+memory: memory-controller --db postgres://localhost/rasa_memory
 
 # === Agent Layer (Python) ===
 llm-gateway: python -m rasa.llm_gateway --config config/gateway.yaml
-sandbox: python -m rasa.sandbox --nats localhost:4222 --data-dir data/sandbox
+sandbox: python -m rasa.sandbox --data-dir data/sandbox
 eval-scorer: evaluation-engine --mode scorer --benchmarks benchmarks/
 
 # === Agent Processes ===
@@ -487,15 +485,14 @@ logs: python scripts/observe.py --watch logs/ --interval 60
 
 ## 5. Configuration Files
 
-### 5.1 config/nats-server.conf
 
 ```conf
-# Rasa Pilot — NATS Server Configuration
+# Rasa Pilot — Server Configuration
 port: 4222
 http_port: 8222
 
 jetstream {
-  store_dir: data/nats
+  
   max_store: 5GB
 }
 
@@ -655,9 +652,6 @@ RASA_DB_NAME=rasa
 RASA_REDIS_HOST=localhost
 RASA_REDIS_PORT=6379
 
-# NATS
-RASA_NATS_HOST=localhost
-RASA_NATS_PORT=4222
 
 # Ollama Cloud (desktop app handles auth — no key needed)
 RASA_LLM_ENDPOINT=http://localhost:11434/v1

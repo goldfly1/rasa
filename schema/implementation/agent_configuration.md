@@ -265,7 +265,7 @@ Soul sheet change in Git
 | **Template engine** | **Handlebars** (Go: `github.com/aymerick/raymond`) | Portable, deterministic, logic-light. Go implementation aligns with Control Plane language. |
 | **Schema validation** | **JSON Schema** (draft 2020-12) + **go-playground/validator** | Standard, well-understood, generates clear error messages. |
 | **Soul sheet storage** | **Git** (source of truth) + **local `souls/` directory** (runtime) + **flat files** (blobs > 1MB) | Git provides history and review; local directory provides fast load; flat files replace S3 for pilot. |
-| **Hot reload** | **Filesystem watcher** (`fsnotify` in Go, `watchdog` in Python) | Agent Runtime watches `<project_root>/souls/` for changes; drains current task, reloads, resumes. NATS `souls.update` topic is the documented upgrade path. |
+| **Hot reload** | **Filesystem watcher** (`fsnotify` in Go, `watchdog` in Python) | Agent Runtime watches `<project_root>/souls/` for changes; drains current task, reloads, resumes. `souls.update` topic is the documented upgrade path. |
 
 ---
 
@@ -306,7 +306,7 @@ Soul sheet change in Git
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-25 | Pilot provisioning: replaced container-image deployment with local `souls/` directory, replaced NATS hot-reload with filesystem watcher, replaced S3 blob storage with flat files, updated model tier comments for hard-coded Gateway mapping. | Codex |
+| 2026-04-25 | Pilot provisioning: replaced container-image deployment with local `souls/` directory, replaced hot-reload with filesystem watcher, replaced S3 blob storage with flat files, updated model tier comments for hard-coded Gateway mapping. | Codex |
 | 2026-04-25 | Initial draft: soul sheet schema, CLI model, prompt pipeline, governance | ? |
 | 2026-04-25 | Added `--one-shot` shorthand to `cli.argument_binding`; clarified one-shot behavior and mode selection priority | ? |
 

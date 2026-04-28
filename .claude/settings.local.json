@@ -1,0 +1,35 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Program Files/GitHub CLI//**)",
+      "Read(//c/Program Files \\(x86\\)/**)",
+      "Read(//mnt/c/Program Files/**)",
+      "Read(//mnt/c/Program Files \\(x86\\)/**)",
+      "Read(//mnt/**)",
+      "Bash(/c/Program Files/GitHub CLI/gh auth *)",
+      "Bash(python -c \"import redis; print\\(redis.__version__\\); print\\(dir\\(redis.asyncio\\)\\)\")",
+      "Bash(python -c \"from psycopg.types import TypeInfo; help\\(psycopg.AsyncConnection.add_notify_handler\\)\")",
+      "Bash(go get *)",
+      "Bash(go version *)",
+      "Read(//c/Program Files/Go/bin/**)",
+      "Bash(cmd.exe //c \"where go\")",
+      "Bash(export PATH=\"$PATH:/mnt/c/Program Files/Go/bin\")",
+      "Bash(go mod *)",
+      "Bash(cmd.exe *)",
+      "Read(//home/roshan/Downloads/**)",
+      "Bash(python -m pytest tests/test_bus.py -v --no-header)",
+      "Bash(.venv/Scripts/python.exe *)",
+      "Bash(redis-cli ping *)",
+      "Bash(go test *)",
+      "Bash(git *)",
+      "Bash(go build *)",
+      "Bash(redis-cli --version)",
+      "Bash(redis-cli hset *)",
+      "Bash(redis-cli info *)",
+      "Bash(./memory-controller.exe --http 127.0.0.1:8301)",
+      "Bash(curl -s http://127.0.0.1:8301/health)",
+      "Bash(curl -s -X POST http://127.0.0.1:8301/assemble -H 'Content-Type: application/json' -d '{\"soul_id\":\"test\",\"task_id\":\"t1\",\"agent_id\":\"a1\",\"variables\":[\"short_term_summary\"],\"resolution\":{}}')",
+      "Bash(kill %1)"
+    ]
+  }
+}

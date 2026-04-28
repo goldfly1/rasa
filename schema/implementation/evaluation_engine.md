@@ -72,7 +72,7 @@ Evaluation results feed back into:
 
 | Concern | Selection | Rationale |
 |---------|-----------|-----------|
-| **Aggregator language** | **Go 1.24+** | NATS consumer for eval.record topic; periodic aggregation window timers. |
+| **Aggregator language** | **Go 1.24+** | PostgreSQL LISTEN/NOTIFY subscriber for eval.record channel; periodic aggregation window timers. |
 | **Scorer language** | **Python 3.12+** | Benchmark task execution and scoring logic. |
 | **Evaluation store** | **PostgreSQL** (`evaluation_records` table) | Co-located with primary durable store. JSONB for flexible `gate_results`. |
 | **Benchmark storage** | **Local directory** (`<project_root>/benchmarks/`) | Versioned task definitions (JSON). Can be migrated to Git for collaborative editing. |
@@ -84,11 +84,11 @@ Evaluation results feed back into:
 
 - **Process:** Go binary (aggregator + drift detector) + Python process (scorer, benchmark runner). Both via Procfile:
   ```
-  eval-aggregator: evaluation-engine --mode aggregator --db postgres://localhost/rasa_eval --nats localhost:4222
+  eval-aggregator: evaluation-engine --mode aggregator --db postgres://localhost/rasa_eval 
   eval-scorer: evaluation-engine --mode scorer --benchmarks benchmarks/
   ```
-- **Dependencies:** Local PostgreSQL, local NATS, local Redis (for drift window).
-- **Startup:** Runs alongside the Orchestrator and Sandbox Pipeline. Consumes `sandbox.result` and `eval.record` NATS topics.
+- **Dependencies:** Local PostgreSQL, , local Redis (for drift window).
+- **Startup:** Runs alongside the Orchestrator and Sandbox Pipeline. Consumes `sandbox_result` and `eval_record` PostgreSQL channels.
 - **Benchmark execution:** The scorer runs benchmark tasks by submitting them through the Orchestrator via the standard task pipeline — no special path.
 
 ---
@@ -125,3 +125,4 @@ Evaluation results feed back into:
 ---
 
 *This document implements the evaluation contract defined in `architectural_schema_v2.1.md` §13. EvaluationRecord schema aligns with `orchestrator.md` §2.2 task lifecycle.*
+

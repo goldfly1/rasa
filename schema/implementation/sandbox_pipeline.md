@@ -29,7 +29,7 @@ Receives agent output, runs it through a static scanner, secret/PII detector, an
 | **BUILDING** | Scan passes | Build in temp directory with subprocess timeout (30s default). Resource limits not enforced in pilot (single-machine). |
 | **TESTING** | Build succeeds | Execute test suite. Test coverage gate enforced for CODER; relaxed for PLANNER. Subprocess timeout: 60s. |
 | **PROMOTING** | All gates pass | Copy changed files from sandbox back to working directory. `soul_id` and `prompt_version_hash` stamped into promotion record. |
-| **CLEANUP** | Promotion complete or gate failure | Delete temp directory. Emit `SANDBOX_RESULT` event with `soul_id`, gate results, and `task_id` to NATS. |
+| **CLEANUP** | Promotion complete or gate failure | Delete temp directory. Emit `SANDBOX_RESULT` event with `soul_id`, gate results, and `task_id` via PostgreSQL LISTEN/NOTIFY. |
 
 ### 2.2 Soul-Aware Scanner Rules
 
@@ -68,9 +68,9 @@ Since the sandbox is a temp directory with a subprocess (not a VM), reaping is h
 
 ## 4. Deployment Topology
 
-- **Process:** Python process triggered per task. Can run as a short-lived subprocess or a daemon listening on NATS `sandbox.execute`:
+- **Process:** Python process triggered per task. Can run as a short-lived subprocess or a daemon listening on PostgreSQL `sandbox_execute` channel:
   ```
-  sandbox: python -m rasa.sandbox --nats localhost:4222 --data-dir data/sandbox
+  sandbox: python -m rasa.sandbox  --data-dir data/sandbox
   ```
 - **Sandbox root:** `<project_root>/data/sandbox/{task_id>/` — created per task, deleted after promotion or failure.
 - **Scanner rules:** `<project_root>/scanners/` — YAML files loaded at pipeline start.

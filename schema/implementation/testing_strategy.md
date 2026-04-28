@@ -29,10 +29,10 @@ Every component should have unit tests for its core logic, with external depende
 | Sandbox Pipeline | Python | `pytest` + `tempfile` | Temp-dir lifecycle, scanner chain, build/test timeouts, promotion/rollback |
 | Memory Subsystem | Go / Python | `testing` + `pytest` | Embedding pipeline, context assembly, eviction, canonical model CRUD |
 | Evaluation Engine | Go / Python | `testing` + `pytest` | EvaluationRecord creation, benchmark execution, drift detection math |
-| Message Bus | Go | `testing` + NATS test server | Envelope publishing/consuming, dead-letter behavior |
+| Message Bus | Go | `testing` + Redis test server or PG test database | Envelope publishing/consuming, dead-letter behavior |
 
 **Mock strategy:**
-- **NATS:** Use `nats-server` with an ephemeral port for integration tests, or mock the client interface for pure unit tests.
+- **Redis/PG:** Use ephemeral Redis/PG instances for integration tests, or mock the client interface for pure unit tests.
 - **PostgreSQL:** Use a test database (`rasa_test`) that is dropped and recreated before each test run, or use `goqu`/`testcontainers` for disposable instances.
 - **LLM API:** Mock HTTP responses — never call a real model in unit tests.
 - **Redis:** Use `miniredis` (Go) or `fakeredis` (Python) for in-process mocking.
@@ -44,7 +44,7 @@ Test the contract between two components with real (or near-real) dependencies.
 
 | Pair | What to Verify |
 |------|---------------|
-| Orchestrator ↔ Pool Controller | Task assignment via NATS, NACK handling, agent registry updates |
+| Orchestrator ↔ Pool Controller | Task assignment via PostgreSQL LISTEN/NOTIFY, NACK handling, agent registry updates |
 | Pool Controller ↔ Agent Runtime | Heartbeat reception, soul_id matching, agent timeout detection |
 | Agent Runtime ↔ LLM Gateway | ModelRequest envelope, cache response, fallback triggering |
 | Agent Runtime ↔ Policy Engine | Tool call allow/deny, require_human_confirm blocking |
@@ -96,7 +96,7 @@ The Evaluation Engine's `score` field (0–1) is populated by either an automate
 | **Test runner (Go)** | `go test ./...` — standard Go toolchain |
 | **Test runner (Python)** | `pytest -v` — with `pytest-cov` for coverage |
 | **Test database** | `rasa_test` — dropped/recreated per run |
-| **Mock NATS** | `nats-server -p 4223` (ephemeral) fired up by test harness |
+| **Mock Redis/PG** | `redis-server --port 6380` (ephemeral) fired up by test harness |
 | **CI/CD** | Manual for pilot (`go test ./... && python -m pytest` before demos) |
 | **Coverage target** | None for pilot — establish baseline during development |
 | **Smoke test cadence** | Before each demo or significant change |
@@ -107,7 +107,7 @@ The Evaluation Engine's `score` field (0–1) is populated by either an automate
 
 | # | Question | Status |
 |---|----------|--------|
-| 1 | Should components be tested in isolation (mocked NATS/DB) or against real dependencies? | **Recommend both:** unit tests with mocks for fast feedback, integration tests with real deps for contract verification. |
+| 1 | Should components be tested in isolation (mocked Redis/PG) or against real dependencies? | **Recommend both:** unit tests with mocks for fast feedback, integration tests with real deps for contract verification. |
 | 2 | What is the target code coverage for the pilot? | **Open:** Suggest no target for pilot — focus on critical paths (state machines, soul loading, policy evaluation). |
 | 3 | How is human review sampling triggered? | **Open:** CLI prompt after task completion, or a web dashboard in the upgrade. Recommend CLI for pilot. |
 | 4 | Should the smoke test be automated in CI, or manual? | **Open:** Manual for pilot. Automate when graduated rollout begins. |
@@ -119,3 +119,4 @@ The Evaluation Engine's `score` field (0–1) is populated by either an automate
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-25 | Initial draft: testing layers, mock strategy, smoke test outline, human review sampling. Placeholder for future development. | Codex |
+

@@ -85,7 +85,7 @@ The Policy Engine loads `behavior.tool_policy` from the soul sheet at agent sess
 Organization guardrails support two reload paths (pilot uses the first):
 
 1. **PostgreSQL polling** — Policy Engine checks `policy_rules` table every 30 seconds for changes. Simple, no additional infrastructure.
-2. **NATS `policy.update` topic** — Push-based updates for near-instant propagation. Topic defined in `message_bus.md` §2.2.
+2. **Redis `policy.update` channel** — Push-based updates for near-instant propagation. Topic defined in `message_bus.md` §2.2.
 
 Soul sheet policy changes require agent restart (soul sheets are loaded at session start). The Policy Engine rejects tasks whose `soul_id` version does not match the current deployment.
 
@@ -97,7 +97,7 @@ Soul sheet policy changes require agent restart (soul sheets are loaded at sessi
 |---------|-----------|-----------|
 | **Language** | **Go 1.24+** | Matches control-plane language. Single static binary. |
 | **Rule store** | **PostgreSQL** (`policy_rules` table) | Co-located with primary durable store. JSONB for flexible rule definitions. |
-| **Live update transport** | **NATS JetStream** (`policy.update` topic) + **PostgreSQL polling** (30s fallback) | Push for speed; poll for reliability. |
+| **Live update transport** | **Redis Pub/Sub** (`policy.update` channel) + **PostgreSQL polling** (30s fallback) | Push for speed; poll for reliability. |
 | **Human review channel** | **CLI stdin prompt** (pilot); **REST API** (upgrade) | Simplest possible interface for a single-machine pilot. REST API can be added when human reviewers need a dashboard. |
 | **Audit log** | **PostgreSQL** (`policy_audit_log` table) | Append-only table with tool, args, decision, soul_id, timestamp. |
 
@@ -107,9 +107,9 @@ Soul sheet policy changes require agent restart (soul sheets are loaded at sessi
 
 - **Process:** Native Go binary, started via Procfile:
   ```
-  policy: policy-engine --db postgres://localhost/rasa_policy --nats localhost:4222
+  policy: policy-engine --db postgres://localhost/rasa_policy 
   ```
-- **Dependencies:** Local PostgreSQL, local NATS.
+- **Dependencies:** Local PostgreSQL, local Redis.
 - **Auth:** None on localhost (pilot). Add mTLS when deploying across hosts.
 - **Lifecycle:** Starts before Agent Runtime, runs alongside Orchestrator. No warm-up required.
 
@@ -146,3 +146,4 @@ Soul sheet policy changes require agent restart (soul sheets are loaded at sessi
 ---
 
 *This document implements the permission contract defined in `architectural_schema_v2.1.md` §6.2. Tool policy fields align with `agent_configuration.md` §2.2 behavior block.*
+

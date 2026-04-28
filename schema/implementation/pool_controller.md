@@ -79,8 +79,8 @@ pool:
 
 The Pool Controller watches for soul sheet changes via two paths:
 
-1. **Filesystem watcher** — Detects changes to `<project_root>/souls/*.yaml`. On change, publishes a `souls.reload` event to NATS for interested agents.
-2. **NATS `souls.loaded` event** — Received from the Bootstrap & Ingestion process on initial startup. Triggers registry warm-up.
+1. **Filesystem watcher** — Detects changes to `<project_root>/souls/*.yaml`. On change, publishes a `souls.reload` via PostgreSQL LISTEN/NOTIFY for interested agents.
+2. **`souls.loaded` PostgreSQL LISTEN/NOTIFY notification** — Received from the Bootstrap & Ingestion process on initial startup. Triggers registry warm-up.
 
 On soul change:
 - The new soul version is stored in PostgreSQL.
@@ -93,10 +93,10 @@ On soul change:
 
 | Concern | Selection | Rationale |
 |---------|-----------|-----------|
-| **Language** | **Go 1.24+** | NATS consumer, heartbeat timeout loop, Redis client — goroutines/channels map cleanly to concurrent agent monitoring. |
+| **Language** | **Go 1.24+** | PostgreSQL subscriber, heartbeat timeout loop, Redis client — goroutines/channels map cleanly to concurrent agent monitoring. |
 | **Agent registry** | **Redis** (hot, TTL-backed) + **PostgreSQL** (durable) | Redis for heartbeat lookups (< 1ms); PostgreSQL for restart recovery. |
-| **Task routing transport** | **NATS JetStream** (`tasks.assigned` topic) | Orchestrator publishes; Pool Controller consumes and matches agents. |
-| **Heartbeat transport** | **NATS JetStream** (`agents.heartbeat.{agent_id}` topic) | Each agent publishes to its own topic; Pool Controller fans in via wildcard subscription. |
+| **Task routing transport** | **PostgreSQL LISTEN/NOTIFY** (channel `tasks_assigned`) | Orchestrator publishes; Pool Controller consumes and matches agents. |
+| **Heartbeat transport** | **Redis Pub/Sub** (channel `agents.heartbeat.{agent_id}`) | Each agent publishes to its own topic; Pool Controller fans in via wildcard subscription. |
 | **Soul distribution config** | **YAML** (`config/pool.yaml`) | Human-editable static config. Can be replaced by a dynamic scheduler in an upgrade. |
 
 ---
@@ -107,8 +107,8 @@ On soul change:
   ```
   pool-controller: pool-controller --config config/pool.yaml --db postgres://localhost/rasa_pool
   ```
-- **Startup order:** Redis → PostgreSQL → NATS → LLM Gateway → **Pool Controller** → Agent Runtime.
-- **Dependencies:** Local Redis, local PostgreSQL, local NATS.
+- **Startup order:** Redis → PostgreSQL → → LLM Gateway → **Pool Controller** → Agent Runtime.
+- **Dependencies:** Local Redis, local PostgreSQL, .
 - **Agent discovery:** Agents register automatically via their first heartbeat. No static agent list needed — the Pool Controller builds the registry dynamically.
 - **Concurrency ceiling:** Enforced by `max_concurrent` in `config/pool.yaml`. If all agents of a given `soul_id` are busy, the Pool Controller NACKs the `tasks.assigned` message, and the Orchestrator queues or escalates.
 
@@ -141,9 +141,10 @@ On soul change:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-04-25 | Pilot provisioning: replaced K8s Deployment / HPA scaling with static Procfile pool, replaced rolling-update pre-warming with filesystem watcher + NATS reload event, added pool config YAML, simplified state machine for static pool, filled Tech Stack / Deployment / Operational sections. | Codex |
+| 2026-04-25 | Pilot provisioning: replaced K8s Deployment / HPA scaling with static Procfile pool, replaced rolling-update pre-warming with filesystem watcher + reload notification, added pool config YAML, simplified state machine for static pool, filled Tech Stack / Deployment / Operational sections. | Codex |
 | 2026-04-25 | Added soul-aware warm pool, pre-warming, and scale-down logic | ? |
 
 ---
 
 *This document implements the pool management contract defined in `architectural_schema_v2.1.md` §12. Soul distribution aligns with `agent_configuration.md` §2.2. Heartbeat protocol aligns with `agent_runtime.md` §2.3.*
+

@@ -1,71 +1,77 @@
-# RASA Orchestrator / Hermes Setup (WSL)
+# RASA Orchestrator Setup
 
 ## Overview
 
-The Hermes orchestrator runs inside WSL (Windows Subsystem for Linux), manages the system architecture, and delegates work to Windows-side Python agents. This document describes how the orchestrator is configured, how it discovers project context, and how it dispatches tasks.
+Claude Code serves as the Hermes orchestrator for RASA. It manages the system architecture, maintains project context, and delegates work to Python agents. Everything runs natively on a single Windows 11 machine.
 
 ## Context Files
 
-Hermes discovers persistent context from three sources:
+Claude Code discovers persistent context from these sources:
 
-### 1. `~/.hermes/SOUL.md` (per-user, survives across sessions)
-Contains your hardware specs, preferences (aggressive cleanup, `mv` over `cp`), PostgreSQL connection details, ComfyUI paths, and model preferences. This is injected into every turn, subject to ~2200 char cap for personal notes and ~1375 char cap for user profile. Use it sparingly for stable facts.
+### 1. `.hermes/SOUL.md` (per-user, survives across sessions)
+Contains hardware specs, preferences (aggressive cleanup, `mv` over `cp`), PostgreSQL connection details, and model preferences. Injected into every turn, subject to ~2200 char cap for personal notes and ~1375 char cap for user profile. Use sparingly for stable facts.
 
-### 2. Project-level `AGENTS.md` (repo root, committed)
-Per-repo orchestrator instructions. Hermes discovers `AGENTS.md` at `/mnt/c/Users/goldf/rasa/AGENTS.md` and uses it as persistent state for the project's current phase, file layout, conventions, and blockers. This survives context window truncation much better than session memory.
+### 2. `AGENTS.md` (repo root, committed)
+Per-repo orchestrator instructions. Used as persistent state for the project's current phase, file layout, conventions, and blockers. Survives context window truncation much better than session memory.
 
-### 3. `.hermes/SOUL.md` inside the repo (optional, not yet created)
-A repo-local SOUL for team-wide context. Currently not needed since AGENTS.md covers the orchestrator scope.
+### 3. `CLAUDE.md` (repo root)
+Tooling guidance for Claude Code — commands, architecture, conventions, pitfalls.
+
+### 4. `.hermes/AGENTS.md` (inside repo)
+Full system state, architecture decisions, decision log, known issues.
 
 ## Discovery Order at Session Start
 
-When a new Hermes session begins with working directory `/mnt/c/Users/goldf/rasa`:
-
-1. Read `~/.hermes/config.yaml` (model provider, memory db URL)
-2. Load `~/.hermes/SOUL.md` into personal memory
-3. Inject session-specific context (current working dir, system prompt)
-4. Traverse project directory for `AGENTS.md`, `CLAUDE.md`, `.cursorrules`, `SOUL.md`
-5. Truncate subdirectory context if too deep (risk: silently eats ~20k tokens)
-6. Load `~/.hermes/memories/*.md` into user profile (~1375 char cap)
+1. Read `.hermes/SOUL.md` into personal memory
+2. Inject session-specific context (current working dir, system prompt)
+3. Traverse project directory for `AGENTS.md`, `CLAUDE.md`
+4. Truncate subdirectory context if too deep (risk: silently eats ~20k tokens)
+5. Load `.hermes/memories/*.md` into user profile (~1375 char cap)
 
 ## Orchestrator Responsibilities
 
-In the RASA architecture, Hermes is the brain, not the hands:
+In the RASA architecture, Claude Code is the brain, not the hands:
 
-- **Read files** in `rasa/` via `read_file`, `search_files`, `terminal`
-- **Delegate work** via `delegation_tools` to Windows workers
+- **Read files** in `rasa/` via Read, Grep, Glob
+- **Create tasks** by inserting rows into `rasa_orch.tasks`
 - **Query PostgreSQL** for task status, audit logs, heartbeats
 - **Route LLM requests** through `rasa/llm_gateway/client.py`
-- **Commit often**: `git add -A && git commit -m "..."` after every coherent change
+- **Commit often**: `git add <files> && git commit -m "..."` after every coherent change
 
-## What Hermes Does NOT Do
+## What the Orchestrator Does NOT Do
 
-- Run Windows executables directly from WSL (use `powershell.exe` bridge)
-- Control Windows-side agents inline (always dispatch, don't run)
-- Hold long-lived state across sessions (use PostgreSQL or AGENTS.md)
-- Code directly unless trivial (<5 lines of boilerplate)
+- Execute agent work directly — always dispatch via task creation
+- Hold long-lived state across sessions — use PostgreSQL or AGENTS.md
+- Write agent code directly unless trivial (the pool controller and dispatcher handle that)
 
-## WSL-to-Windows Dispatch Pattern
+## Execution Pattern
 
 ```bash
-# Bad: runs in terminal() background-detector
-powershell.exe -Command "& 'C:\Users\goldf\.venv\Scripts\python.exe' ..."
+# Direct agent dispatch (one-shot)
+python -m rasa.agent.dispatcher --soul coder-v2-dev --goal "Refactor DB layer" --one-shot
 
-# Good: write a .ps1, then execute it
-powershell.exe -File C:\Users\goldf\rasa\scripts\run_task.ps1
+# Pool controller (long-running poller using PG LISTEN/NOTIFY + Redis heartbeats)
+python -m rasa.pool.controller --pool-file config/pool.yaml
+
+# Task creation (for pool controller to pick up)
+psql -U postgres -d rasa_orch -c "INSERT INTO tasks (title, status, soul_id) VALUES ('...', 'PENDING', 'coder-v2-dev');"
 ```
-
-The pool controller (`rasa/pool/controller.py`) does exactly this: polls `rasa_orch.tasks` from WSL, finds `PENDING` rows, writes a `.ps1` script with the password env var, then spawns it via `subprocess.Popen(..., start_new_session=True)`.
 
 ## Command Reference
 
 ```bash
-# Run pool controller from WSL
+# Run pool controller
 python -m rasa.pool.controller --pool-file config/pool.yaml
 
 # Check task status
-scripts/check_tasks.ps1   # or direct psql via PowerShell
+psql -U postgres -d rasa_orch -c "SELECT status, COUNT(*) FROM tasks GROUP BY status;"
 
-# Run a dispatcher directly (testing)  
-powershell.exe -File scripts/smoke_dispatcher.ps1
+# Run a dispatcher directly (testing)
+python -m rasa.agent.dispatcher --soul coder-v2-dev --goal "Test" --dry-run
+
+# Build Go control plane
+go build ./cmd/...
+
+# Start all services
+honcho start
 ```
