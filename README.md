@@ -7,16 +7,115 @@ Multi-agent orchestration platform for a single-node lab machine. Agents are sou
 
 ---
 
-## Architecture (30-second version)
+## Architecture
 
+### Object Flowmap
+
+```mermaid
+graph TD
+    %% Orchestrator
+    ORCH["🔧 Orchestrator CLI<br/>(Go)"]
+    TASK["📋 Task<br/>id, soul_id, title, goal, status"]
+    ORCH -->|"INSERT tasks +<br/>PG NOTIFY tasks_assigned"| ORCHDB
+
+    %% PostgreSQL — rasa_orch
+    ORCHDB[("🐘 rasa_orch<br/>tasks, bus_messages, checkpoint_refs")]
+    ORCHDB -->|"LISTEN/NOTIFY<br/>tasks_assigned"| POOL
+
+    %% Pool Controller
+    POOL["🏊 Pool Controller<br/>(Go)"]
+    AGENT_REG["🗂️ Agent Registry<br/>agent_id → soul_id, state"]
+    POOL -->|"upsert"| AGENT_REG
+    POOL -->|"UPDATE tasks<br/>SET assigned_agent_id, assigned_at"| ORCHDB
+
+    %% Agent Runtime
+    AGENT["🤖 Agent Runtime<br/>(Python)"]
+    SOUL["📜 Soul Sheet<br/>(YAML: role, model, prompt template)"]
+    AGENT -->|"loads"| SOUL
+    AGENT -->|"poll: SELECT FOR UPDATE SKIP LOCKED"| ORCHDB
+    AGENT -->|"UPDATE status=RUNNING"| ORCHDB
+
+    %% Redis heartbeat
+    REDIS[("⚡ Redis<br/>Pub/Sub + cache")]
+    AGENT -->|"PUBLISH heartbeat<br/>every 5s"| REDIS
+    REDIS -->|"PSUBSCRIBE agents.heartbeat.*"| POOL
+    REDIS -->|"PSUBSCRIBE agents.heartbeat.*"| RECOV
+
+    %% Memory Subsystem
+    MEM["🧠 Memory Controller<br/>(Go) :8300"]
+    MEMDB[("🐘 rasa_memory<br/>canonical_nodes, embeddings, session_store")]
+    AGENT -->|"HTTP POST /assemble<br/>soul_id, task_id, variables"| MEM
+    MEM -->|"reads/writes"| MEMDB
+
+    %% LLM Gateway
+    GATEWAY["🌐 LLM Gateway<br/>(Python) :11434"]
+    GWCACHE[("⚡ Redis<br/>SHA-256 prompt cache")]
+    AGENT -->|"complete(system_prompt, tier)"| GATEWAY
+    GATEWAY -->|"cache check"| GWCACHE
+    GATEWAY -->|"Deepseek Cloud API"| LLM[("☁️ LLM Cloud")]
+    GATEWAY -->|"cache write"| GWCACHE
+
+    %% Sandbox Pipeline
+    SANDBOX["🔒 Sandbox Pipeline<br/>(Python)"]
+    SANDBOXDIR["📁 data/sandbox/<br/>clone → scan → build → test → promote"]
+    AGENT -->|"PG NOTIFY sandbox_execute"| SANDBOX
+    SANDBOX -->|"isolated subprocess in temp dir"| SANDBOXDIR
+    SANDBOX -->|"PG NOTIFY sandbox_result"| ORCHDB
+
+    %% Evaluation Engine
+    EVAL["📊 Eval Aggregator<br/>(Go)"]
+    EVALDB[("🐘 rasa_eval<br/>evaluation_records, drift_snapshots")]
+    SCORER["🎯 Eval Scorer<br/>(Python)"]
+    SCORER -->|"score_result() → eval_record<br/>PG NOTIFY eval_record"| EVAL
+    EVAL -->|"INSERT evaluation_records"| EVALDB
+    EVAL -->|"snapshot every 60s<br/>INSERT drift_snapshots"| EVALDB
+    EVAL -->|"drift alert<br/>if mean < 0.6 over 20-task window"| LOGS
+
+    %% Recovery Controller
+    RECOV["🔄 Recovery Controller<br/>(Go)"]
+    RECOVDB[("🐘 rasa_recovery<br/>recovery_log, idempotency_ledger")]
+    RECOV -->|"detect dead agent<br/>> 30s no heartbeat"| REDIS
+    RECOV -->|"re-queue task → PENDING<br/>write recovery_log"| RECOVDB
+    RECOV -->|"idempotency guard<br/>ON CONFLICT key_hash"| RECOVDB
+
+    %% Policy Engine
+    POLICY["⚖️ Policy Engine<br/>(Go)"]
+    POLDB[("🐘 rasa_policy<br/>rules, audit_log, human_reviews")]
+    POLICY -->|"evaluate allow/deny/review"| POLDB
+
+    %% Pool saturation tracking
+    POOL -->|"INSERT backpressure_events<br/>when no agent for soul"| POOLDB
+    POOLDB[("🐘 rasa_pool<br/>agents, heartbeats, backpressure_events")]
+    POOL -->|"INSERT heartbeats + agents<br/>ON CONFLICT upsert"| POOLDB
+
+    %% Observability Dashboard
+    OBSERVE["📺 observe.py<br/>Live terminal dashboard"]
+    LOGS["📋 Structured JSON logs"]
+    OBSERVE -->|"queries views every 30s"| ORCHDB
+    OBSERVE -->|"queries views"| EVALDB
+    OBSERVE -->|"queries views"| POOLDB
+    OBSERVE -->|"queries views"| RECOVDB
+    OBSERVE -->|"queries views"| POLDB
 ```
-Claude Code (orchestrator)      Python agents (venv)
-  └── submits tasks              └── soul sheet → prompt → LLM → DB write
-         │                              ▲
-         └─── PostgreSQL ◄──────────────┘
-                ▲
-         Go control plane (pool, recovery, eval, policy, memory)
+
+### Task State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> PENDING: INSERT task<br/>(orchestrator / CLI)
+    PENDING --> ASSIGNED: pool-controller routes<br/>to available agent
+    ASSIGNED --> RUNNING: agent polls + claims<br/>(SELECT FOR UPDATE SKIP LOCKED)
+    RUNNING --> COMPLETED: LLM call succeeds<br/>result written
+    RUNNING --> FAILED: LLM call fails<br/>or sandbox gate fails
+    RUNNING --> CHECKPOINTED: agent saves snapshot<br/>(multi-turn daemon only)
+    ASSIGNED --> PENDING: recovery re-queue<br/>(agent died, no checkpoint)
+    FAILED --> PENDING: manual retry
+    CHECKPOINTED --> COMPLETED: replay from checkpoint
+    COMPLETED --> [*]
+    FAILED --> [*]
 ```
+
+### Key Design Decisions
 
 - **PostgreSQL** is the sole durable bus — LISTEN/NOTIFY + backing tables. No NATS.
 - **Redis** is ephemeral only — heartbeats, session cache, policy Pub/Sub.
