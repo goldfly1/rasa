@@ -31,7 +31,9 @@
       "Bash(curl -s -X POST http://127.0.0.1:8301/assemble -H 'Content-Type: application/json' -d '{\"soul_id\":\"test\",\"task_id\":\"t1\",\"agent_id\":\"a1\",\"variables\":[\"short_term_summary\"],\"resolution\":{}}')",
       "Bash(kill %1)",
       "Bash(go vet *)",
-      "Bash(.venv/Scripts/pip.exe show *)"
+      "Bash(.venv/Scripts/pip.exe show *)",
+      "Bash(mkdir -p scanners benchmarks data/sandbox)",
+      "Bash(touch scanners/.gitkeep benchmarks/.gitkeep data/sandbox/.gitkeep)"
     ]
   }
 }

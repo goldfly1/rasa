@@ -10,13 +10,13 @@ redis: redis-server --port 6379
 # orchestrator: orchestrator --db postgres://localhost/rasa_orch
 pool-controller: pool-controller --config config/pool.yaml --redis localhost:6379 --http 127.0.0.1:8301 --db postgres://localhost/rasa_orch
 policy-engine: policy-engine --db postgres://localhost/rasa_policy --redis localhost:6379 --soul-dir souls/
-recovery: recovery-controller --db postgres://localhost/rasa_recovery
-eval-aggregator: evaluation-engine --mode aggregator --db postgres://localhost/rasa_eval
+recovery: recovery-controller --redis localhost:6379 --http 127.0.0.1:8302 --db postgres://localhost/rasa_recovery
+eval-aggregator: eval-aggregator --http 127.0.0.1:8303 --db postgres://localhost/rasa_eval
 memory: memory-controller --db postgres://localhost/rasa_memory --redis localhost:6379 --http 127.0.0.1:8300
 
 # === Agent Layer (Python) ===
 llm-gateway: python -m rasa.llm_gateway --config config/gateway.yaml
-sandbox: python -m rasa.sandbox --db postgres://localhost/rasa_sandbox
+sandbox: python -m rasa.sandbox --data-dir data/sandbox
 eval-scorer: evaluation-engine --mode scorer --benchmarks benchmarks/
 
 # === Agent Processes ===

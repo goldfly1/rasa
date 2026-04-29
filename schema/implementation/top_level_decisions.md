@@ -132,8 +132,8 @@ These decisions are **provisional by design**. Each entry includes a review date
 | **Gate 1** | Foundation | Go module + Python package scaffolded. PostgreSQL schemas created. Shared messaging interfaces working (PG LISTEN/NOTIFY + Redis Pub/Sub). Config files, Procfile, soul sheets on disk. | ✅ Complete |
 | **Gate 2** | Core Services | Policy Engine evaluates rules end-to-end. Memory Subsystem stores/retrieves context. LLM Gateway routes requests to Ollama Cloud. Each independently testable. | ✅ Complete |
 | **Gate 3** | Agent Lifecycle | Agent Runtime loads soul, assembles prompt, calls LLM. Pool Controller tracks heartbeats, routes tasks. Orchestrator submits task → agent processes → output promoted. First end-to-end flow works. | ✅ Complete |
-| **Gate 4** | Safety & Quality | Sandbox Pipeline scans/builds/tests output. Recovery Controller replays checkpoint. Evaluation Engine detects drift. | ◻ Next |
-| **Gate 5** | Integration | Observability captures logs from all components. Smoke test passes end-to-end. System processes a full plan → code → review → promote workflow. | ◻ |
+| **Gate 4** | Safety & Quality | Sandbox Pipeline scans/builds/tests output. Recovery Controller replays checkpoint. Evaluation Engine detects drift. | ✅ Complete |
+| **Gate 5** | Integration | Observability captures logs from all components. Smoke test passes end-to-end. System processes a full plan → code → review → promote workflow. | ◻ Next |
 
 ---
 
@@ -144,5 +144,6 @@ These decisions are **provisional by design**. Each entry includes a review date
 | 2026-04-28 | Replaced JetStream with PostgreSQL LISTEN/NOTIFY + Redis Pub/Sub in §2.3. Updated Decision Impact Matrix transport column. Added Implementation Gates (§5). | Codex |
 | 2026-04-28 | Removed WSL references; everything runs natively on Windows. Claude Code is the orchestrator. Replaced NATS upgrade path references with Redis Pub/Sub. Cleaned up gVisor note to remove WSL2. | Goldf |
 | 2026-04-28 | Gate 3: Agent Runtime (state machine + chevron + GatewayClient + Memory API + heartbeats), Pool Controller (agent registry + heartbeat monitoring + task routing), Orchestrator CLI (submit --wait). Removed --nats from pool-controller + orchestrator. | Goldf |
+| 2026-04-29 | Gate 4: Sandbox Pipeline (clone/scan/build/test/promote state machine, regex secret scanner), Recovery Controller (heartbeat monitoring, dead agent detection, task re-queue, idempotency ledger), Evaluation Engine (eval_record subscriber, 20-task drift window, Python scorer). Removed --nats from recovery-controller + eval-aggregator. Created scanners/, benchmarks/, data/sandbox/ dirs. | Goldf |
 | 2026-04-25 | Pilot provisioning: initial native-process decisions. | Codex |
 | 2026-04-23 | Initial populated draft from architectural_schema_v2.1.md | ? |
