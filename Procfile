@@ -26,4 +26,4 @@ agent-reviewer: python -m rasa.agent.runtime --soul souls/reviewer-v1.yaml
 agent-planner: python -m rasa.agent.runtime --soul souls/planner-v1.yaml
 agent-architect: python -m rasa.agent.runtime --soul souls/architect-v1.yaml
 # === Observability ===
-logs: python scripts/observe.py --watch logs/ --interval 60
+logs: python scripts/observe.py --interval 60

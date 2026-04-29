@@ -11,7 +11,7 @@ func TestDriftWindowPush(t *testing.T) {
 	w.Push("coder", 0.8)
 	w.Push("coder", 1.0)
 
-	n, avg := w.Stats("coder")
+	n, avg, _ := w.Stats("coder")
 	if n != 3 {
 		t.Errorf("count: want 3, got %d", n)
 	}
@@ -60,7 +60,7 @@ func TestDriftWindowOverflow(t *testing.T) {
 	w.Push("coder", 0.0)
 	w.Push("coder", 0.0)
 
-	n, _ := w.Stats("coder")
+	n, _, _ := w.Stats("coder")
 	if n != 3 {
 		t.Errorf("overflow count: want 3, got %d", n)
 	}
@@ -68,7 +68,7 @@ func TestDriftWindowOverflow(t *testing.T) {
 
 func TestDriftWindowStatsEmpty(t *testing.T) {
 	w := NewDriftWindow(5)
-	n, avg := w.Stats("nonexistent")
+	n, avg, _ := w.Stats("nonexistent")
 	if n != 0 {
 		t.Errorf("empty count: want 0, got %d", n)
 	}

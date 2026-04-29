@@ -31,6 +31,8 @@ func main() {
 		dsn = db.DSN("rasa_orch")
 	}
 
+	poolDSN := db.DSN("rasa_pool")
+
 	cfg, err := pool.LoadConfig(*cfgPath)
 	if err != nil {
 		log.Fatalf("pool-controller: config: %v", err)
@@ -53,7 +55,7 @@ func main() {
 	}
 	defer redisSub.Close()
 
-	// DB for task status updates
+	// DB for task status updates (rasa_orch)
 	pgDB, err := sql.Open("postgres", dsn)
 	if err != nil {
 		log.Fatalf("pool-controller: db open: %v", err)
@@ -63,10 +65,20 @@ func main() {
 		log.Fatalf("pool-controller: db ping: %v", err)
 	}
 
+	// DB for pool tables (rasa_pool)
+	poolDB, err := sql.Open("postgres", poolDSN)
+	if err != nil {
+		log.Fatalf("pool-controller: pool db open: %v", err)
+	}
+	defer poolDB.Close()
+	if err := poolDB.Ping(); err != nil {
+		log.Fatalf("pool-controller: pool db ping: %v", err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ctrl := pool.NewPoolController(ctx, cfg, pgSub, redisSub, pgDB)
+	ctrl := pool.NewPoolController(ctx, cfg, pgSub, redisSub, pgDB, poolDB)
 	if err := ctrl.Start(); err != nil {
 		log.Fatalf("pool-controller: start: %v", err)
 	}

@@ -89,6 +89,19 @@ func (r *AgentRegistry) RemoveDead(deadline time.Time) []string {
 	return removed
 }
 
+// CountByState returns the number of agents in a given state.
+func (r *AgentRegistry) CountByState(state string) int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	n := 0
+	for _, info := range r.agents {
+		if info.State == state {
+			n++
+		}
+	}
+	return n
+}
+
 // Count returns the total number of registered agents.
 func (r *AgentRegistry) Count() int {
 	r.mu.RLock()

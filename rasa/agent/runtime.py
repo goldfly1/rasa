@@ -233,7 +233,7 @@ class AgentRuntime:
     async def _write_failure(self, task: dict, error_msg: str) -> None:
         async with await psycopg.AsyncConnection.connect(_pg_dsn("rasa_orch")) as conn:
             await conn.execute(
-                "UPDATE tasks SET status = 'FAILED', error_message = %s WHERE id = %s",
+                "UPDATE tasks SET status = 'FAILED', failed_at = NOW(), error_message = %s WHERE id = %s",
                 (error_msg, task["id"]),
             )
             await conn.execute("NOTIFY task_completed, %s", (task["id"],))

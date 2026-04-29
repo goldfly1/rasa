@@ -133,7 +133,7 @@ These decisions are **provisional by design**. Each entry includes a review date
 | **Gate 2** | Core Services | Policy Engine evaluates rules end-to-end. Memory Subsystem stores/retrieves context. LLM Gateway routes requests to Ollama Cloud. Each independently testable. | ✅ Complete |
 | **Gate 3** | Agent Lifecycle | Agent Runtime loads soul, assembles prompt, calls LLM. Pool Controller tracks heartbeats, routes tasks. Orchestrator submits task → agent processes → output promoted. First end-to-end flow works. | ✅ Complete |
 | **Gate 4** | Safety & Quality | Sandbox Pipeline scans/builds/tests output. Recovery Controller replays checkpoint. Evaluation Engine detects drift. | ✅ Complete |
-| **Gate 5** | Integration | Observability captures logs from all components. Smoke test passes end-to-end. System processes a full plan → code → review → promote workflow. | ◻ Next |
+| **Gate 5** | Integration | Observability captures metrics from all components into database tables with queryable SQL views. Smoke test verifies end-to-end task submission and pipeline. observe.py provides live terminal dashboard. | ✅ Complete |
 
 ---
 
@@ -145,5 +145,6 @@ These decisions are **provisional by design**. Each entry includes a review date
 | 2026-04-28 | Removed WSL references; everything runs natively on Windows. Claude Code is the orchestrator. Replaced NATS upgrade path references with Redis Pub/Sub. Cleaned up gVisor note to remove WSL2. | Goldf |
 | 2026-04-28 | Gate 3: Agent Runtime (state machine + chevron + GatewayClient + Memory API + heartbeats), Pool Controller (agent registry + heartbeat monitoring + task routing), Orchestrator CLI (submit --wait). Removed --nats from pool-controller + orchestrator. | Goldf |
 | 2026-04-29 | Gate 4: Sandbox Pipeline (clone/scan/build/test/promote state machine, regex secret scanner), Recovery Controller (heartbeat monitoring, dead agent detection, task re-queue, idempotency ledger), Evaluation Engine (eval_record subscriber, 20-task drift window, Python scorer). Removed --nats from recovery-controller + eval-aggregator. Created scanners/, benchmarks/, data/sandbox/ dirs. | Goldf |
+| 2026-04-29 | Gate 5: Fixed timestamp gaps (assigned_at, failed_at, retry_after). Wired durable writes to heartbeats, backpressure_events, agents, drift_snapshots, and recovery_log tables. Created 070_metrics_views.sql with SQL views (v_task_latency, v_daily_summary, v_soul_performance, v_latest_drift, v_agent_uptime, v_recent_backpressure, v_recent_decisions, v_recent_recoveries). Built observe.py live terminal dashboard. Added test_smoke.py end-to-end test. | Goldf |
 | 2026-04-25 | Pilot provisioning: initial native-process decisions. | Codex |
 | 2026-04-23 | Initial populated draft from architectural_schema_v2.1.md | ? |

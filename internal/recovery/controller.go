@@ -16,11 +16,12 @@ type RecoveryController struct {
 	mu       sync.Mutex
 	lastSeen map[string]time.Time // agent_id → last heartbeat
 
-	db       *sql.DB    // rasa_orch for task queries
-	ledger   *IdempotencyLedger
-	pgSub    *bus.PGSub
-	redisSub *bus.RedisSub
-	pgPub    *bus.PGPub
+	orchDB    *sql.DB // rasa_orch for task queries
+	recoveryDB *sql.DB // rasa_recovery for recovery_log
+	ledger    *IdempotencyLedger
+	pgSub     *bus.PGSub
+	redisSub  *bus.RedisSub
+	pgPub     *bus.PGPub
 
 	timeout time.Duration
 	ctx     context.Context
@@ -39,15 +40,16 @@ func NewRecoveryController(
 ) *RecoveryController {
 	ctx, cancel := context.WithCancel(ctx)
 	return &RecoveryController{
-		lastSeen: make(map[string]time.Time),
-		db:       orchDB,
-		ledger:   NewIdempotencyLedger(recoveryDB),
-		pgSub:    pgSub,
-		redisSub: redisSub,
-		pgPub:    pgPub,
-		timeout:  timeout,
-		ctx:      ctx,
-		cancel:   cancel,
+		lastSeen:   make(map[string]time.Time),
+		orchDB:     orchDB,
+		recoveryDB: recoveryDB,
+		ledger:     NewIdempotencyLedger(recoveryDB),
+		pgSub:      pgSub,
+		redisSub:   redisSub,
+		pgPub:      pgPub,
+		timeout:    timeout,
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 
@@ -104,7 +106,6 @@ func (c *RecoveryController) reapDeadAgents() {
 			dead = append(dead, id)
 		}
 	}
-	// Remove from tracking after handling
 	for _, id := range dead {
 		delete(c.lastSeen, id)
 	}
@@ -120,13 +121,14 @@ func (c *RecoveryController) handleDeadAgent(agentID string) {
 
 	// Find running task assigned to this agent
 	var taskID, soulID, status string
-	err := c.db.QueryRowContext(c.ctx,
+	err := c.orchDB.QueryRowContext(c.ctx,
 		"SELECT id, soul_id, status FROM tasks WHERE assigned_agent_id=$1 AND status IN ('ASSIGNED','RUNNING') ORDER BY created_at DESC LIMIT 1",
 		agentID,
 	).Scan(&taskID, &soulID, &status)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			log.Printf("recovery: agent %s dead but no active task found", agentID)
+			c.writeRecoveryLog(taskID, agentID, "", "noop", "no_active_task")
 			return
 		}
 		log.Printf("recovery: task lookup error for agent %s: %v", agentID, err)
@@ -135,15 +137,15 @@ func (c *RecoveryController) handleDeadAgent(agentID string) {
 
 	// Check for checkpoint
 	var ckptID string
-	ckptErr := c.db.QueryRowContext(c.ctx,
+	ckptErr := c.orchDB.QueryRowContext(c.ctx,
 		"SELECT id FROM checkpoint_refs WHERE task_id=$1 ORDER BY created_at DESC LIMIT 1",
 		taskID,
 	).Scan(&ckptID)
 
 	if ckptErr == sql.ErrNoRows {
 		// No checkpoint — re-queue the task
-		_, err := c.db.ExecContext(c.ctx,
-			"UPDATE tasks SET status='PENDING', assigned_agent_id=NULL, retry_count=retry_count+1 WHERE id=$1",
+		_, err := c.orchDB.ExecContext(c.ctx,
+			"UPDATE tasks SET status='PENDING', assigned_agent_id=NULL, retry_count=retry_count+1, retry_after=NOW() + INTERVAL '30 seconds' WHERE id=$1",
 			taskID,
 		)
 		if err != nil {
@@ -168,6 +170,9 @@ func (c *RecoveryController) handleDeadAgent(agentID string) {
 		actionJSON, _ := json.Marshal(action)
 		c.ledger.Insert(c.ctx, taskID, agentID, "recovery", string(actionJSON))
 
+		// Write recovery log
+		c.writeRecoveryLog(taskID, agentID, "", "re-queued", "agent_dead_no_checkpoint")
+
 		log.Printf("recovery: task %s re-queued (soul=%s, agent=%s dead)", taskID[:8], soulID, agentID)
 	} else if ckptErr == nil {
 		// Has checkpoint — full replay deferred until agent-side checkpointing exists
@@ -176,8 +181,31 @@ func (c *RecoveryController) handleDeadAgent(agentID string) {
 		action := map[string]string{"action": "checkpoint_found", "reason": "replay_deferred"}
 		actionJSON, _ := json.Marshal(action)
 		c.ledger.Insert(c.ctx, taskID, agentID, "recovery", string(actionJSON))
+
+		// Write recovery log
+		c.writeRecoveryLog(taskID, agentID, ckptID, "checkpoint_found", "replay_deferred")
 	} else {
 		log.Printf("recovery: checkpoint lookup error for task %s: %v", taskID, ckptErr)
+	}
+}
+
+// writeRecoveryLog inserts a structured entry into the recovery_log table.
+func (c *RecoveryController) writeRecoveryLog(taskID, agentID, checkpointID, action, reason string) {
+	meta := map[string]string{"reason": reason}
+	metaJSON, _ := json.Marshal(meta)
+
+	var ckptID interface{}
+	if checkpointID != "" {
+		ckptID = checkpointID
+	}
+
+	_, err := c.recoveryDB.ExecContext(c.ctx,
+		`INSERT INTO recovery_log (task_id, agent_id, checkpoint_id, action, metadata, created_at)
+		 VALUES ($1, $2, $3, $4, $5, NOW())`,
+		taskID, agentID, ckptID, action, string(metaJSON),
+	)
+	if err != nil {
+		log.Printf("recovery: recovery_log insert error: %v", err)
 	}
 }
 
