@@ -58,7 +58,7 @@ The index is populated at startup by scanning `<project_root>/souls/*.yaml` and 
 2. Score by tag overlap with `metadata.tags`.
 3. Filter out `soul_id`s whose `model.default_tier` exceeds current budget ceiling.
 4. Select highest score; fallback to next if no warm agent with that `soul_id` is idle.
-5. Publish to `tasks.assigned` topic.
+5. Publish to `tasks_assigned` channel.
 6. If Pool Controller NACKs (no agent available), retry after **5 seconds**. Retry up to 3 times, then escalate.
 
 ### 2.4 Cyclic Dependency Detection
@@ -74,7 +74,7 @@ The Task DAG is validated before assignment. If a cycle is detected:
 | Concern | Selection | Rationale |
 |---------|-----------|-----------|
 | **Language** | **Go 1.24+** | Goroutines/channels for concurrent task lifecycle management, subscription, and retry timers. |
-| **Task state** | **PostgreSQL** (`task_lifecycle` table) | ACID guarantees for the state machine. Each task has a current state, assigned `soul_id`, and transition history. |
+| **Task state** | **PostgreSQL** (`tasks` table) | ACID guarantees for the state machine. Each task has a current state, assigned `soul_id`, and transition history. |
 | **Capability Index** | **PostgreSQL** (`agent_capabilities` table) | Populated from soul sheet scan at startup; incrementally updated on file change. |
 | **Assignment transport** | **PostgreSQL LISTEN/NOTIFY** (channel `tasks_assigned`) | Orchestrator publishes; Pool Controller consumes and routes to agents. |
 | **Input interface** | **JSON over stdin** (pilot CLI) or the **PostgreSQL** `tasks_submit` channel | Tasks can be submitted directly via CLI or via a row insert + NOTIFY for automated pipelines. |
@@ -87,11 +87,11 @@ The Task DAG is validated before assignment. If a cycle is detected:
   ```
   orchestrator: orchestrator --db postgres://localhost/rasa_orch 
   ```
-- **Startup order:** Redis → PostgreSQL → → **Orchestrator** → Pool Controller → Agent Runtime.
-- **Dependencies:** Local PostgreSQL, local PostgreSQL.
+- **Startup order:** Redis → PostgreSQL → **Orchestrator** → Pool Controller → Agent Runtime.
+- **Dependencies:** Local PostgreSQL, local Redis.
 - **Task submission:** Tasks can be submitted via:
   - CLI: `orchestrator submit --soul coder-v2-dev --task '{"title": "..."}'`
-  - PG LISTEN/NOTIFY: Insert a task row and NOTIFY to the `tasks.submit` topic.
+  - PG LISTEN/NOTIFY: Insert a task row and NOTIFY to the `tasks_submit` channel.
 - **No external API exposure in pilot** — the Orchestrator accepts tasks via CLI or PostgreSQL LISTEN/NOTIFY only. REST API (via gRPC-Gateway) is the documented upgrade path.
 
 ---

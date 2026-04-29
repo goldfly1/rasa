@@ -40,7 +40,7 @@ metadata:
   tags: ["backend", "python", "go"]
 
 model:
-  default_tier: "standard"      # Maps to LLM Gateway tier (standard → deepseek-v4-flash, premium → kimi-k2.6)
+  default_tier: "standard"      # Maps to LLM Gateway tier (standard → deepseek-v4-flash, premium → deepseek-v4-pro)
   preferred_model: ""            # Reserved for on-the-fly model selection (upgrade). Ignored in pilot — Gateway uses hard-coded tier mapping.
   temperature: 0.2
   max_tokens: 8192
@@ -140,7 +140,7 @@ extensions:
 
 ### 3.1 Engine
 
-**Handlebars** (Go implementation: `github.com/aymerick/raymond`). Logic-light, deterministic — same inputs always produce the same SHA-256 hash, enabling LLM Gateway cache hits.
+**Mustache/Handlebars** (Python: `chevron`). Logic-light, deterministic — same inputs always produce the same SHA-256 hash, enabling LLM Gateway cache hits.
 
 ### 3.2 The 5-Layer Variable Resolution Stack
 
@@ -162,7 +162,7 @@ When the Agent Runtime assembles a prompt, it resolves variables from five sourc
 4. Overlay task envelope fields.
 5. Overlay CLI arguments.
 6. Overlay environment variables.
-7. Render final string via Handlebars.
+7. Render final string via chevron (Python Mustache/Handlebars).
 8. Compute SHA-256 hash for LLM Gateway cache lookup.
 
 ### 3.4 Caching Strategy
@@ -262,7 +262,7 @@ Soul sheet change in Git
 
 | Concern | Selection | Rationale |
 |---------|-----------|-----------|
-| **Template engine** | **Handlebars** (Go: `github.com/aymerick/raymond`) | Portable, deterministic, logic-light. Go implementation aligns with Control Plane language. |
+| **Template engine** | **Mustache/Handlebars** (Python: `chevron`) | Portable, deterministic, logic-light. Prompt assembly happens in the Python Agent Runtime. |
 | **Schema validation** | **JSON Schema** (draft 2020-12) + **go-playground/validator** | Standard, well-understood, generates clear error messages. |
 | **Soul sheet storage** | **Git** (source of truth) + **local `souls/` directory** (runtime) + **flat files** (blobs > 1MB) | Git provides history and review; local directory provides fast load; flat files replace S3 for pilot. |
 | **Hot reload** | **Filesystem watcher** (`fsnotify` in Go, `watchdog` in Python) | Agent Runtime watches `<project_root>/souls/` for changes; drains current task, reloads, resumes. `souls.update` topic is the documented upgrade path. |

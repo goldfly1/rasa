@@ -1,10 +1,10 @@
-"""Windows-side agent dispatcher -> called from WSL via powershell.exe or run directly.
+"""Legacy one-shot agent dispatcher — superseded by runtime.py for daemon agents.
 
-Usage (from WSL):
-  powershell.exe -Command "C:/Users/goldf/rasa/.venv/Scripts/python.exe -m rasa.agent.dispatcher --soul coder-v2-dev --task-id <uuid> --one-shot"
-
-Or from Windows:
+Usage:
   python -m rasa.agent.dispatcher --soul planner-v1 --goal "Design caching module"
+  python -m rasa.agent.dispatcher --soul coder-v2-dev --task-id <uuid> --one-shot
+
+Prefer rasa.agent.runtime for long-lived agent processes (proper state machine, chevron rendering).
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def _load_soul(soul_id) -> dict:
 
 
 def _resolve_model(soul, override) -> tuple:
-    default = os.environ.get("RASA_DEFAULT_MODEL", "gemma4:31b-cloud")
+    default = os.environ.get("RASA_DEFAULT_MODEL", "Deepseek-v4-flash:cloud")
     if override:
         model = override
     elif soul.get("model", {}).get("preferred_model"):
@@ -58,7 +58,7 @@ def _resolve_model(soul, override) -> tuple:
     else:
         tier = soul.get("model", {}).get("default_tier", "standard")
         if tier == "premium":
-            model = os.environ.get("RASA_PREMIUM_MODEL", "kimi-k2.6:cloud")
+            model = os.environ.get("RASA_PREMIUM_MODEL", "Deepseek-v4-pro:cloud")
         else:
             model = default
     base_url = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434/v1")

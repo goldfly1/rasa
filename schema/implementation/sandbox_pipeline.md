@@ -49,7 +49,7 @@ Since the sandbox is a temp directory with a subprocess (not a VM), reaping is h
 - **BUILD timeout:** 30s. Kills process tree if exceeded.
 - **TEST timeout:** 60s. Kills process tree if exceeded.
 - **Total pipeline timeout:** `2 × max(30s, 60s)` = 120s. If the pipeline process itself is killed, the temp directory is orphaned.
-- **Orphan cleanup:** A background goroutine in the Pipeline process scans `<data_root>/sandbox/` for directories older than 30 minutes and deletes them. Emits `ORPHAN_SANDBOX_DESTROYED` alert if any are found.
+- **Orphan cleanup:** A background asyncio task in the Pipeline process scans `<data_root>/sandbox/` for directories older than 30 minutes and deletes them. Emits `ORPHAN_SANDBOX_DESTROYED` alert if any are found.
 
 ---
 
@@ -97,7 +97,7 @@ Since the sandbox is a temp directory with a subprocess (not a VM), reaping is h
 | # | Question | Status |
 |---|----------|--------|
 | 1 | What is the sandbox VM/container startup latency? | **Resolved (N/A):** Temp directory — ~10ms. No VM. |
-| 2 | How are orphaned sandboxes reaped? | **Resolved:** Background goroutine scans for stale temp dirs > 30 min. Process-level timeouts prevent most orphans. |
+| 2 | How are orphaned sandboxes reaped? | **Resolved:** Background asyncio task scans for stale temp dirs > 30 min. Process-level timeouts prevent most orphans. |
 | 3 | Should scanner rule overlays be baked or fetched dynamically? | **Resolved:** Local YAML files in `<project_root>/scanners/` for pilot. Dynamic fetch is an upgrade. |
 | 4 | Should the sandbox copy the full project or only changed files? | **Resolved:** Full recursive copy for pilot. Symlink/hardlink optimization is an upgrade. |
 

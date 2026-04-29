@@ -485,22 +485,7 @@ logs: python scripts/observe.py --watch logs/ --interval 60
 
 ## 5. Configuration Files
 
-
-```conf
-# Rasa Pilot — Server Configuration
-port: 4222
-http_port: 8222
-
-jetstream {
-  
-  max_store: 5GB
-}
-
-# No auth for pilot (localhost only)
-# Add JWT-based auth when exposing beyond localhost
-```
-
-### 5.2 config/gateway.yaml
+### 5.1 config/gateway.yaml
 
 ```yaml
 # Rasa Pilot — LLM Gateway Configuration

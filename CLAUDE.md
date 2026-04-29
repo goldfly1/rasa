@@ -9,7 +9,7 @@ RASA (Reliable Autonomous System of Agents) is a multi-agent orchestration platf
 - **Repo**: https://github.com/goldfly1/rasa
 - **Hardware**: Intel Ultra 7 255, 64GB RAM, RTX 5060 8GB, 1TB SSD (~250GB free)
 - **Stack**: Go 1.24+ (control plane), Python 3.12+ (agent runtime/LLM gateway), PostgreSQL 16+ (6 databases), Redis, Ollama
-- **Current phase**: Phase 1 — LLM Gateway + Agent Dispatcher + Pool Controller skeletons done; Policy Engine next
+- **Current phase**: Phase 1 — All 5 implementation gates complete (pilot scaffolded end-to-end)
 
 ## Architecture
 
@@ -101,7 +101,7 @@ psql -U postgres -d rasa_orch -f migrations/010_rasa_orch.sql
 ## Key Architecture Decisions
 
 - **PostgreSQL as sole bus (pilot)**: LISTEN/NOTIFY for task wake-up, backing tables for durability. Redis Pub/Sub only for loss-tolerant ephemeral messages (heartbeats, policy change notifications). No NATS — the operational complexity of a third infrastructure service isn't warranted at pilot scale.
-- **Soul sheets**: YAML files defining agent personality and model routing. Template syntax is Handlebars (`{{#each}}`), translated to Jinja2 at runtime in the Python dispatcher via regex. Go uses `raymond` for native Handlebars.
+- **Soul sheets**: YAML files defining agent personality and model routing. Template syntax is Mustache/Handlebars rendered via the `chevron` library in the Python Agent Runtime. The legacy dispatcher.py uses Handlebars→Jinja2 regex translation (lossy); new code should use `runtime.py` with chevron.
 - **Subprocess-based workers**: Each agent is a separate process spawned via `subprocess.Popen(start_new_session=True)`. Workers are fire-and-forget and survive controller restarts.
 - **Persistent orchestrator context**: `.hermes/AGENTS.md` and repo-root `AGENTS.md` carry project state across sessions. These are the authoritative source — Claude's memory is too small (~3600 chars).
 - **6 PostgreSQL databases**: `rasa_orch`, `rasa_pool`, `rasa_policy`, `rasa_memory`, `rasa_eval`, `rasa_recovery` — each owns its domain with clear boundaries.
@@ -116,7 +116,7 @@ psql -U postgres -d rasa_orch -f migrations/010_rasa_orch.sql
 
 ## Known Pitfalls
 
-1. The dispatcher's Handlebars→Jinja2 regex translation is lossy — only `{{#each}}` is supported. Other block helpers will fail silently.
-2. Go stubs in `cmd/` reference an old `--nats` flag that no longer applies. NATS was removed from the architecture; update stubs when implementing.
+1. The legacy dispatcher's Handlebars→Jinja2 regex translation is lossy — only `{{#each}}` is supported. Prefer `runtime.py` which uses `chevron` for proper Mustache/Handlebars rendering.
+2. Go stubs in `cmd/` no longer reference `--nats`. NATS was removed from the architecture; all messaging is PG LISTEN/NOTIFY + Redis Pub/Sub.
 3. `GatewayClient.__init__` creates a new cache pool (`get_pool("rasa_memory")`) on every instantiation. Known leak, deferred for now.
 4. `.hermes/AGENTS.md` and older docs still reference WSL and powershell.exe bridging patterns — those are stale. Everything runs on Windows directly.

@@ -110,7 +110,7 @@ On soul change:
 - **Startup order:** Redis → PostgreSQL → → LLM Gateway → **Pool Controller** → Agent Runtime.
 - **Dependencies:** Local Redis, local PostgreSQL, .
 - **Agent discovery:** Agents register automatically via their first heartbeat. No static agent list needed — the Pool Controller builds the registry dynamically.
-- **Concurrency ceiling:** Enforced by `max_concurrent` in `config/pool.yaml`. If all agents of a given `soul_id` are busy, the Pool Controller NACKs the `tasks.assigned` message, and the Orchestrator queues or escalates.
+- **Concurrency ceiling:** Enforced by `max_concurrent` in `config/pool.yaml`. If all agents of a given `soul_id` are busy, the Pool Controller NACKs the `tasks_assigned` message, and the Orchestrator queues or escalates.
 
 ---
 

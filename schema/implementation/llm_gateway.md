@@ -47,7 +47,7 @@ The Gateway maintains a static mapping in its config file. Soul sheets reference
 | Tier | Model | Agent Roles | Token Limit |
 |------|-------|-------------|-------------|
 | `standard` | `deepseek-v4-flash:cloud` | CODER, REVIEWER | 16K output |
-| `premium` | `kimi-k2.6:cloud` | PLANNER, ARCHITECT | 32K output |
+| `premium` | `deepseek-v4-pro:cloud` | PLANNER, ARCHITECT | 32K output |
 
 > **Upgrade path:** To switch to on-the-fly model selection, replace the tier-mapping lookup with the soul sheet's `model.preferred_model` field. The Gateway already accepts it in the `ModelRequest` — it's just not used in pilot mode.
 

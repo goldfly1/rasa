@@ -87,7 +87,7 @@ These decisions are **provisional by design**. Each entry includes a review date
 |----------|-----------|-----------|-------------|
 | **Soul sheet format** | **YAML 1.2** | Human-readable, diff-friendly in Git, widely understood by ops and dev teams. | 2026-07-23 |
 | **Schema validation** | **JSON Schema** (draft 2020-12) | Standard, well-understood, generates clear error messages at load time. | 2026-07-23 |
-| **Template engine** | **Handlebars** | Logic-light, deterministic output (same inputs = same hash), portable across Go and Python. Go implementation (`github.com/aymerick/raymond`) aligns with Control Plane language. | 2026-07-23 |
+| **Template engine** | **Mustache/Handlebars** (Python: `chevron`) | Logic-light, deterministic output (same inputs = same hash). Prompt assembly happens in the Python Agent Runtime; no Go-side rendering needed. | 2026-07-23 |
 | **Inheritance resolution** | **Parent-child merge** (child overrides) | DRY principle for soul sheets; base `coder` soul, specialized `coder-python` child. Arrays replaced, not appended. | 2026-07-23 |
 | **Soul storage (source of truth)** | **Git** | History, code review, and branching for soul sheet changes. | 2026-07-23 |
 | **Soul storage (runtime)** | **Local `souls/` directory** (pilot); **PostgreSQL + S3** (upgrade) | Flat YAML files loaded directly from disk. Fast iteration — edit, save, filesystem watcher triggers reload. | 2026-07-23 |

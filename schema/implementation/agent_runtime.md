@@ -69,10 +69,10 @@ On `PAUSED` or `CHECKPOINTED` transitions, the runtime writes a **full state dum
 |---------|-----------|-----------|
 | **Language** | **Python 3.12+** | LLM SDK ecosystem; agent logic iteration speed. No Go sidecar for pilot — asyncio + redis-py handles heartbeat publishing at single-machine scale. |
 | **Soul loading** | **YAML 1.2** + **JSON Schema** (draft 2020-12) | Declarative, human-readable, validated at load time via `go-playground/validator` or Python `jsonschema`. |
-| **Template engine** | **Handlebars** (Python: `chevron` or `pyhandlebars`) | Deterministic, portable, aligns with `agent_configuration.md`. |
+| **Template engine** | **Mustache/Handlebars** (Python: `chevron`) | Deterministic, portable, aligns with `agent_configuration.md`. |
 | **Session state** | **Redis** (hot) + **PostgreSQL** (durable checkpoint) + **flat files** (archive) | Redis for sub-ms working memory; PostgreSQL for checkpoint records; flat files for full conversation logs. |
 | **Redis client** | **redis-py** (Python) | Official Redis Python client, async-native (asyncio), used for Pub/Sub heartbeats and checkpoint event publishing. |
-| **LLM Gateway client** | **openai** Python SDK | OpenAI-compatible endpoint at `http://localhost:11434/v1`. Same client works for Ollama and any OpenAI-compatible provider. |
+| **LLM Gateway client** | **GatewayClient** (`rasa.llm_gateway.client`) | Internal abstraction over tier routing, Redis SHA-256 caching, seed bypass, and fallback chain. Communicates with LLM Cloud API. |
 
 > **Sidecar note:** The Go sidecar (gRPC server, Redis subscriber offload) is dropped for the pilot. It can be reintroduced if profiling reveals Python GIL contention on Redis I/O or CPU-bound tool execution.
 
